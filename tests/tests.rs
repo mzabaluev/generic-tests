@@ -13,9 +13,9 @@ mod tests {
         assert_ne!(&s, "aa");
     }
 
-    #[instantiate_tests(String)]
+    #[instantiate_tests(<String>)]
     mod string {}
 
-    #[instantiate_tests(Cow<'static, str>)]
+    #[instantiate_tests(<Cow<'static, str>>)]
     mod cow {}
 }

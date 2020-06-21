@@ -1,15 +1,14 @@
 use proc_macro2::TokenStream;
 use quote::quote;
 use quote::ToTokens;
-use syn::parse::{Parse, ParseStream};
 use syn::parse_quote;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::visit_mut::{self, VisitMut};
 use syn::Token;
 use syn::{
-    AttrStyle, Attribute, Error, FnArg, GenericArgument, Ident, Item, ItemFn, ItemMod, Pat,
-    PatIdent,
+    AngleBracketedGenericArguments, AttrStyle, Attribute, Error, FnArg, GenericArgument, Ident,
+    Item, ItemFn, ItemMod, Pat, PatIdent,
 };
 
 pub fn expand(mut ast: ItemMod) -> TokenStream {
@@ -114,19 +113,12 @@ impl InstArguments {
                         return Err(Error::new_spanned(attr, "cannot be an inner attribute"))
                     }
                 };
-                let args = attr.parse_args::<Self>()?;
+                let bracketed = attr.parse_args::<AngleBracketedGenericArguments>()?;
                 item.attrs.remove(pos);
-                return Ok(Some(args));
+                return Ok(Some(InstArguments(bracketed.args)));
             }
         }
         Ok(None)
-    }
-}
-
-impl Parse for InstArguments {
-    fn parse(input: ParseStream<'_>) -> syn::Result<Self> {
-        let args = Punctuated::parse_terminated(input)?;
-        Ok(InstArguments(args))
     }
 }
 
