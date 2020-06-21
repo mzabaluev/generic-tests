@@ -1,6 +1,6 @@
-use proc_macro2::TokenStream;
-use quote::quote;
+use proc_macro2::{Span, TokenStream};
 use quote::ToTokens;
+use quote::{quote, quote_spanned};
 use syn::parse_quote;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
@@ -101,7 +101,10 @@ fn extract_test_fns(ast: &mut ItemMod) -> syn::Result<Vec<TestFn>> {
     Ok(test_fns)
 }
 
-struct InstArguments(Punctuated<GenericArgument, Token![,]>);
+struct InstArguments {
+    args: Punctuated<GenericArgument, Token![,]>,
+    attr_span: Span,
+}
 
 impl InstArguments {
     fn try_extract(item: &mut ItemMod) -> syn::Result<Option<Self>> {
@@ -113,9 +116,10 @@ impl InstArguments {
                         return Err(Error::new_spanned(attr, "cannot be an inner attribute"))
                     }
                 };
-                let bracketed = attr.parse_args::<AngleBracketedGenericArguments>()?;
+                let AngleBracketedGenericArguments { args, .. } = attr.parse_args()?;
+                let attr_span = attr.span();
                 item.attrs.remove(pos);
-                return Ok(Some(InstArguments(bracketed.args)));
+                return Ok(Some(InstArguments { args, attr_span }));
             }
         }
         Ok(None)
@@ -151,7 +155,7 @@ impl Instantiator {
         }
     }
 
-    fn instantiate_tests(&self, args: InstArguments, content: &mut Vec<Item>) {
+    fn instantiate_tests(&self, inst_args: InstArguments, content: &mut Vec<Item>) {
         debug_assert!(content.is_empty());
 
         // Get path prefix to the macro invocation's root module.
@@ -164,10 +168,13 @@ impl Instantiator {
         // module scope alias those of the root module, we don't want lints on
         // identifiers that are actually unused in the parent, but used in the
         // instantiation arguments. So import the names from the parent first.
-        content.push(parse_quote! {
-            #[allow(unused_imports)]
-            use super::*;
-        });
+        content.push(
+            syn::parse2(quote_spanned! { inst_args.attr_span =>
+                #[allow(unused_imports)]
+                use super::*;
+            })
+            .unwrap(),
+        );
         if self.depth > 1 {
             content.push(parse_quote! {
                 #[allow(unused_imports)]
@@ -182,7 +189,7 @@ impl Instantiator {
             };
             let name = &test.name;
             let inputs = &test.inputs;
-            let generic_args = &args.0;
+            let generic_args = &inst_args.args;
             let fn_args = &test.args;
             content.push(parse_quote! {
                 #attr
