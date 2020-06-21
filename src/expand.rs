@@ -162,15 +162,26 @@ impl Instantiator {
     fn instantiate_tests(&self, args: InstArguments, content: &mut Vec<Item>) {
         debug_assert!(content.is_empty());
 
+        // Get path prefix to the macro invocation's root module.
         let mut super_prefix = TokenStream::new();
         for _ in 0..self.depth {
             super_prefix.extend(quote! {super::});
         }
 
+        // The order of glob imports is important. If identifiers in the parent
+        // module scope alias those of the root module, we don't want lints on
+        // identifiers that are actually unused in the parent, but used in the
+        // instantiation arguments. So import the names from the parent first.
         content.push(parse_quote! {
             #[allow(unused_imports)]
-            use #super_prefix*;
+            use super::*;
         });
+        if self.depth > 1 {
+            content.push(parse_quote! {
+                #[allow(unused_imports)]
+                use #super_prefix*;
+            });
+        }
 
         for test in &self.tests {
             let attr = match test.test_attr {
