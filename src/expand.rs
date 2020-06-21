@@ -7,7 +7,10 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::visit_mut::{self, VisitMut};
 use syn::Token;
-use syn::{Attribute, Error, FnArg, GenericArgument, Ident, Item, ItemFn, ItemMod, Pat, PatIdent};
+use syn::{
+    AttrStyle, Attribute, Error, FnArg, GenericArgument, Ident, Item, ItemFn, ItemMod, Pat,
+    PatIdent,
+};
 
 pub fn expand(mut ast: ItemMod) -> TokenStream {
     match transform(&mut ast) {
@@ -105,6 +108,12 @@ impl InstArguments {
     fn try_extract(item: &mut ItemMod) -> syn::Result<Option<Self>> {
         for (pos, attr) in item.attrs.iter().enumerate() {
             if attr.path.is_ident("instantiate_tests") {
+                match attr.style {
+                    AttrStyle::Outer => {}
+                    AttrStyle::Inner(_) => {
+                        return Err(Error::new_spanned(attr, "cannot be an inner attribute"))
+                    }
+                };
                 let args = attr.parse_args::<Self>()?;
                 item.attrs.remove(pos);
                 return Ok(Some(args));
