@@ -1,5 +1,3 @@
-#![feature(proc_macro_hygiene)]
-
 #[generic_tests::module]
 mod tests {
     use std::borrow::Cow;
@@ -16,8 +14,8 @@ mod tests {
     }
 
     #[instantiate_tests(String)]
-    mod string;
+    mod string {}
 
     #[instantiate_tests(Cow<'static, str>)]
-    mod cow;
+    mod cow {}
 }

@@ -5,7 +5,6 @@ use syn::parse::{Parse, ParseStream};
 use syn::parse_quote;
 use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
-use syn::token::Brace;
 use syn::visit_mut::{self, VisitMut};
 use syn::Token;
 use syn::{Attribute, Error, FnArg, GenericArgument, Ident, Item, ItemFn, ItemMod, Pat, PatIdent};
@@ -151,13 +150,15 @@ impl Instantiator {
         }
     }
 
-    fn instantiate_tests(&self, args: InstArguments, item: &mut ItemMod) {
+    fn instantiate_tests(&self, args: InstArguments, content: &mut Vec<Item>) {
+        debug_assert!(content.is_empty());
+
         let mut super_prefix = TokenStream::new();
         for _ in 0..self.depth {
             super_prefix.extend(quote! {super::});
         }
 
-        let mut content = vec![parse_quote! { use #super_prefix*; }];
+        content.push(parse_quote! { use #super_prefix*; });
 
         for test in &self.tests {
             let attr = match test.test_attr {
@@ -175,8 +176,6 @@ impl Instantiator {
                 }
             })
         }
-
-        item.content = Some((Brace::default(), content));
     }
 }
 
@@ -185,14 +184,26 @@ impl VisitMut for Instantiator {
         debug_assert_ne!(self.depth, 0);
         match InstArguments::try_extract(item) {
             Ok(Some(args)) => {
-                if item.content.is_some() {
-                    self.record_error(Error::new_spanned(
-                        item,
-                        "won't instantiate tests into a module with existing content",
-                    ));
-                    return;
-                }
-                self.instantiate_tests(args, item);
+                let content = match &mut item.content {
+                    None => {
+                        self.record_error(Error::new_spanned(
+                            item,
+                            "module to instantiate tests into must be inline",
+                        ));
+                        return;
+                    }
+                    Some((_, content)) => {
+                        if !content.is_empty() {
+                            self.record_error(Error::new_spanned(
+                                item,
+                                "module to instantiate tests into must be empty",
+                            ));
+                            return;
+                        }
+                        content
+                    }
+                };
+                self.instantiate_tests(args, content);
             }
             Ok(None) => {
                 self.depth += 1;
