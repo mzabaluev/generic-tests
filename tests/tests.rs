@@ -73,4 +73,21 @@ mod nested {
         #[instantiate_tests(<Foo>)]
         mod foo {}
     }
+
+    #[cfg(feature = "test-compile-fail")]
+    mod shadows_root {
+        use std::fmt::{self, Display};
+
+        #[derive(Default)]
+        struct Foo;
+
+        impl Display for Foo {
+            fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+                write!(f, "Foo")
+            }
+        }
+
+        #[instantiate_tests(<Foo>)]
+        mod foo {}
+    }
 }
