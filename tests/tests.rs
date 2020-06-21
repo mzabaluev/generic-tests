@@ -1,4 +1,4 @@
-#[generic_tests::module]
+#[generic_tests::define]
 mod tests {
     use std::borrow::Cow;
     use std::fmt::Debug;

@@ -9,7 +9,7 @@ use syn::parse_macro_input;
 use syn::{Error, ItemMod};
 
 #[proc_macro_attribute]
-pub fn module(attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn define(attr: TokenStream, item: TokenStream) -> TokenStream {
     if !attr.is_empty() {
         let err = Error::new(Span::call_site().into(), "unexpected attribute input");
         return err.to_compile_error().into();
