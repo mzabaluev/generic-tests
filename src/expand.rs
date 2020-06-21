@@ -167,7 +167,10 @@ impl Instantiator {
             super_prefix.extend(quote! {super::});
         }
 
-        content.push(parse_quote! { use #super_prefix*; });
+        content.push(parse_quote! {
+            #[allow(unused_imports)]
+            use #super_prefix*;
+        });
 
         for test in &self.tests {
             let attr = match test.test_attr {
