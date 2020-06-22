@@ -11,6 +11,9 @@ use syn::{
     Item, ItemFn, ItemMod, Pat, PatIdent,
 };
 
+const TEST_ATTRS: &[&str] = &["test", "ignore", "should_panic", "bench"];
+const COPIED_ATTRS: &[&str] = &["cfg"];
+
 pub fn expand(mut ast: ItemMod) -> TokenStream {
     match transform(&mut ast) {
         Ok(()) => ast.into_token_stream(),
@@ -23,62 +26,64 @@ fn transform(ast: &mut ItemMod) -> syn::Result<()> {
     instantiate(tests, ast)
 }
 
-enum TestAttr {
-    Test,
-    Bench,
-}
-
-impl TestAttr {
-    fn match_attr(attr: &Attribute) -> Option<Self> {
-        if attr.path.is_ident("test") {
-            Some(TestAttr::Test)
-        } else if attr.path.is_ident("bench") {
-            Some(TestAttr::Bench)
-        } else {
-            None
-        }
-    }
-}
-
 type TestFnArgs = Punctuated<Ident, Token![,]>;
 
 struct TestFn {
-    test_attr: TestAttr,
+    test_attrs: Vec<Attribute>,
     name: Ident,
     inputs: Punctuated<FnArg, Token![,]>,
     args: TestFnArgs,
 }
 
+fn extract_test_attrs(item: &mut ItemFn) -> Vec<Attribute> {
+    let mut test_attrs = Vec::new();
+    let mut pos = 0;
+    while pos < item.attrs.len() {
+        let attr = &item.attrs[pos];
+        if TEST_ATTRS.iter().any(|name| attr.path.is_ident(name)) {
+            test_attrs.push(item.attrs.remove(pos))
+        } else {
+            pos += 1;
+        }
+    }
+    if !test_attrs.is_empty() {
+        for attr in &item.attrs {
+            if COPIED_ATTRS.iter().any(|name| attr.path.is_ident(name)) {
+                test_attrs.push(attr.clone());
+            }
+        }
+    }
+    test_attrs
+}
+
 impl TestFn {
     fn try_extract(item: &mut ItemFn) -> syn::Result<Option<Self>> {
-        for (pos, attr) in item.attrs.iter().enumerate() {
-            if let Some(test_attr) = TestAttr::match_attr(attr) {
-                let args = item
-                    .sig
-                    .inputs
-                    .iter()
-                    .map(|input| match input {
-                        FnArg::Typed(type_pat) => match &*type_pat.pat {
-                            Pat::Ident(PatIdent { ident, .. }) => Ok(ident.clone()),
-                            _ => Err(Error::new_spanned(
-                                type_pat,
-                                "unsupported pattern in test function input",
-                            )),
-                        },
-                        FnArg::Receiver(_) => Err(Error::new_spanned(
-                            input,
-                            "unexpected receiver argument in a test function",
+        let test_attrs = extract_test_attrs(item);
+        if !test_attrs.is_empty() {
+            let args = item
+                .sig
+                .inputs
+                .iter()
+                .map(|input| match input {
+                    FnArg::Typed(type_pat) => match &*type_pat.pat {
+                        Pat::Ident(PatIdent { ident, .. }) => Ok(ident.clone()),
+                        _ => Err(Error::new_spanned(
+                            type_pat,
+                            "unsupported pattern in test function input",
                         )),
-                    })
-                    .collect::<syn::Result<TestFnArgs>>()?;
-                item.attrs.remove(pos);
-                return Ok(Some(TestFn {
-                    test_attr,
-                    name: item.sig.ident.clone(),
-                    inputs: item.sig.inputs.clone(),
-                    args,
-                }));
-            }
+                    },
+                    FnArg::Receiver(_) => Err(Error::new_spanned(
+                        input,
+                        "unexpected receiver argument in a test function",
+                    )),
+                })
+                .collect::<syn::Result<TestFnArgs>>()?;
+            return Ok(Some(TestFn {
+                test_attrs,
+                name: item.sig.ident.clone(),
+                inputs: item.sig.inputs.clone(),
+                args,
+            }));
         }
         Ok(None)
     }
@@ -183,16 +188,13 @@ impl Instantiator {
         }
 
         for test in &self.tests {
-            let attr = match test.test_attr {
-                TestAttr::Test => quote! { #[test] },
-                TestAttr::Bench => quote! { #[bench] },
-            };
+            let test_attrs = &test.test_attrs;
             let name = &test.name;
             let inputs = &test.inputs;
             let generic_args = &inst_args.args;
             let fn_args = &test.args;
             content.push(parse_quote! {
-                #attr
+                #(#test_attrs)*
                 fn #name(#inputs) {
                     #super_prefix#name::<#generic_args>(#fn_args)
                 }

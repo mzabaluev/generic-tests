@@ -38,6 +38,9 @@ use syn::{Error, ItemMod};
 /// parameterized with the arguments given in `instantiate_tests`.
 /// The test attributes of the original generic definitions are erased by
 /// the macro, so the test framework receives only the instantiated test cases.
+/// Additionally, any `cfg` attributes on the generic function items are
+/// copied to the instantiated test case functions, enabling consistent
+/// conditional compilation.
 ///
 /// # Examples
 ///

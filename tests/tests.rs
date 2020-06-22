@@ -91,3 +91,76 @@ mod nested {
         mod foo {}
     }
 }
+
+#[generic_tests::define]
+mod modifier_attrs {
+    #[test]
+    #[ignore]
+    fn ignore<T>() {
+        panic!("tests instantiated from this function should not be run")
+    }
+
+    #[test]
+    #[ignore = "tests the macro works in presence of attribute content"]
+    fn ignore_with_reason<T>() {
+        panic!("tests instantiated from this function should not be run")
+    }
+
+    #[ignore]
+    #[test]
+    fn ignore_above<T>() {
+        panic!("tests instantiated from this function should not be run")
+    }
+
+    #[test]
+    #[should_panic]
+    fn should_panic<T>() {
+        panic!("panicking as it should")
+    }
+
+    #[test]
+    #[should_panic(expected = "panicking as it should")]
+    fn should_panic_with_expected<T>() {
+        panic!("panicking as it should")
+    }
+
+    #[test]
+    #[ignore]
+    #[should_panic]
+    fn ignore_should_panic<T>() {
+        // Does not panic, so should be ignored
+    }
+
+    #[instantiate_tests(<()>)]
+    mod inst {}
+}
+
+#[generic_tests::define]
+mod cfg_attr {
+    #[cfg(test)]
+    #[test]
+    fn enabled<T>() {}
+
+    #[cfg(feature = "no-such-feature")]
+    #[test]
+    fn disabled_above<T>() {
+        panic!("unexpectedly enabled")
+    }
+
+    #[test]
+    #[cfg(feature = "no-such-feature")]
+    fn disabled_below<T>() {
+        panic!("unexpectedly enabled")
+    }
+
+    #[allow(dead_code)]
+    #[cfg(test)]
+    fn not_a_test_case<T>() {
+        // This should not be instantiated. If it is, it will trigger
+        // the dead_code lint in the instantiation module.
+    }
+
+    #[deny(dead_code)]
+    #[instantiate_tests(<()>)]
+    mod inst {}
+}
