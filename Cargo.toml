@@ -3,6 +3,12 @@ name = "generic-tests"
 version = "0.1.0-dev"
 authors = ["Mikhail Zabaluev <mikhail.zabaluev@gmail.com>"]
 edition = "2018"
+description = "Procedural macro to define tests and benchmarks generically"
+readme = "README.md"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/mzabaluev/generic-tests/"
+categories = ["development-tools::testing"]
+keywords = ["generics", "parametric", "tests"]
 
 [lib]
 proc-macro = true
