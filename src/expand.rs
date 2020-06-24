@@ -98,9 +98,28 @@ fn extract_test_fns(ast: &mut ItemMod) -> syn::Result<Vec<TestFn>> {
         None => return Err(Error::new(span, "only inline modules are supported")),
     };
     let mut test_fns = Vec::new();
+    let mut generic_arity = None;
     for item in items {
         if let Item::Fn(item) = item {
             if let Some(test_fn) = TestFn::try_extract(item)? {
+                let item_generic_arity = item.sig.generics.params.len();
+                match generic_arity {
+                    None => {
+                        generic_arity = Some(item_generic_arity);
+                    }
+                    Some(n) => {
+                        if item_generic_arity != n {
+                            return Err(Error::new(
+                                item.sig.generics.params.span(),
+                                format!(
+                                    "test function has {} generic parameters \
+                                    while others in the same module have {}",
+                                    item_generic_arity, n
+                                ),
+                            ));
+                        }
+                    }
+                }
                 test_fns.push(test_fn)
             }
         }
