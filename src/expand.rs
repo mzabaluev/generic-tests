@@ -109,8 +109,13 @@ fn extract_test_fns(ast: &mut ItemMod) -> syn::Result<Vec<TestFn>> {
                     }
                     Some(n) => {
                         if item_generic_arity != n {
+                            let span = if item_generic_arity == 0 {
+                                item.span()
+                            } else {
+                                item.sig.generics.params.span()
+                            };
                             return Err(Error::new(
-                                item.sig.generics.params.span(),
+                                span,
                                 format!(
                                     "test function has {} generic parameters \
                                     while others in the same module have {}",
