@@ -8,7 +8,7 @@ use syn::visit_mut::{self, VisitMut};
 use syn::Token;
 use syn::{
     AngleBracketedGenericArguments, AttrStyle, Attribute, Error, FnArg, GenericArgument, Ident,
-    Item, ItemFn, ItemMod, Pat, PatIdent,
+    Item, ItemFn, ItemMod, Pat, PatIdent, ReturnType,
 };
 
 const TEST_ATTRS: &[&str] = &["test", "ignore", "should_panic", "bench"];
@@ -32,6 +32,7 @@ struct TestFn {
     test_attrs: Vec<Attribute>,
     name: Ident,
     inputs: Punctuated<FnArg, Token![,]>,
+    output: ReturnType,
     args: TestFnArgs,
 }
 
@@ -82,6 +83,7 @@ impl TestFn {
                 test_attrs,
                 name: item.sig.ident.clone(),
                 inputs: item.sig.inputs.clone(),
+                output: item.sig.output.clone(),
                 args,
             }));
         }
@@ -191,11 +193,12 @@ impl Instantiator {
             let test_attrs = &test.test_attrs;
             let name = &test.name;
             let inputs = &test.inputs;
+            let output = &test.output;
             let generic_args = &inst_args.args;
             let fn_args = &test.args;
             content.push(parse_quote! {
                 #(#test_attrs)*
-                fn #name(#inputs) {
+                fn #name(#inputs) #output {
                     #super_prefix#name::<#generic_args>(#fn_args)
                 }
             })

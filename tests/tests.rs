@@ -21,6 +21,54 @@ mod simple {
 }
 
 #[generic_tests::define]
+mod fallible_protocol {
+    use std::borrow::Cow;
+    use std::fmt::Debug;
+    use std::str::{self, Utf8Error};
+
+    trait FromUtf8<'a>: Sized + 'a {
+        fn from_utf8(bytes: &'a [u8]) -> Result<Self, Utf8Error>;
+    }
+
+    impl<'a> FromUtf8<'a> for &'a str {
+        fn from_utf8(bytes: &'a [u8]) -> Result<Self, Utf8Error> {
+            str::from_utf8(bytes)
+        }
+    }
+
+    impl<'a> FromUtf8<'a> for String {
+        fn from_utf8(bytes: &'a [u8]) -> Result<Self, Utf8Error> {
+            String::from_utf8(bytes.to_vec()).map_err(|e| e.utf8_error())
+        }
+    }
+
+    impl<'a> FromUtf8<'a> for Cow<'a, str> {
+        fn from_utf8(bytes: &'a [u8]) -> Result<Self, Utf8Error> {
+            str::from_utf8(bytes).map(Into::into)
+        }
+    }
+
+    #[test]
+    fn ok_from_valid_utf8<'a, T>() -> Result<(), Utf8Error>
+    where
+        T: FromUtf8<'a> + AsRef<str> + Debug,
+    {
+        let v = T::from_utf8(b"Hello, world!")?;
+        assert_eq!(v.as_ref(), "Hello, world!");
+        Ok(())
+    }
+
+    #[instantiate_tests(<&'static str>)]
+    mod str_slice {}
+
+    #[instantiate_tests(<String>)]
+    mod string {}
+
+    #[instantiate_tests(<Cow<'static, str>>)]
+    mod cow {}
+}
+
+#[generic_tests::define]
 mod nested {
     use std::fmt::{self, Display};
 
