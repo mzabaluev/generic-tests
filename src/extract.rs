@@ -1,0 +1,216 @@
+use crate::signature::{self, TestInputSignature, TestReturnSignature};
+
+use proc_macro2::{Span, TokenStream};
+use quote::ToTokens;
+use syn::punctuated::Punctuated;
+use syn::spanned::Spanned;
+use syn::Token;
+use syn::{
+    AngleBracketedGenericArguments, AttrStyle, Attribute, Error, FnArg, GenericArgument, Generics,
+    Ident, Item, ItemFn, ItemMod, Lifetime, ReturnType, Type, WherePredicate,
+};
+
+use std::collections::{HashMap, HashSet};
+
+const TEST_ATTRS: &[&str] = &["test", "ignore", "should_panic", "bench"];
+const COPIED_ATTRS: &[&str] = &["cfg"];
+
+pub type FnArgs = Punctuated<FnArg, Token![,]>;
+
+#[derive(Default)]
+pub struct Tests {
+    pub test_fns: Vec<TestFn>,
+    pub input_sigs: HashMap<FnArgs, TestInputSignature>,
+    pub return_sigs: HashMap<Box<Type>, TestReturnSignature>,
+}
+
+pub struct TestFn {
+    pub test_attrs: Vec<Attribute>,
+    pub name: Ident,
+    pub lifetime_params: Punctuated<Lifetime, Token![,]>,
+    pub inputs: FnArgs,
+    pub output: ReturnType,
+}
+
+impl Tests {
+    pub fn try_extract(ast: &mut ItemMod) -> syn::Result<(Self, &mut Vec<Item>)> {
+        let span = ast.span();
+        let items = match ast.content.as_mut() {
+            Some(content) => &mut content.1,
+            None => return Err(Error::new(span, "only inline modules are supported")),
+        };
+        let mut generic_arity = None;
+        let mut tests = Tests::default();
+        for item in items.iter_mut() {
+            if let Item::Fn(item) = item {
+                if tests.try_extract_fn(item)? {
+                    let item_generic_arity = item.sig.generics.params.len();
+                    match generic_arity {
+                        None => {
+                            generic_arity = Some(item_generic_arity);
+                        }
+                        Some(n) => {
+                            if item_generic_arity != n {
+                                let span = if item_generic_arity == 0 {
+                                    item.span()
+                                } else {
+                                    item.sig.generics.params.span()
+                                };
+                                return Err(Error::new(
+                                    span,
+                                    format!(
+                                        "test function has {} generic parameters \
+                                        while others in the same module have {}",
+                                        item_generic_arity, n
+                                    ),
+                                ));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        Ok((tests, items))
+    }
+
+    fn try_extract_fn(&mut self, item: &mut ItemFn) -> syn::Result<bool> {
+        let test_attrs = extract_test_attrs(item);
+        if test_attrs.is_empty() {
+            return Ok(false);
+        }
+        signature::validate(&item.sig)?;
+        let inputs = item.sig.inputs.clone();
+        let mut lifetimes = if inputs.is_empty() {
+            HashSet::new()
+        } else if let Some(sig) = self.input_sigs.get(&inputs) {
+            sig.item.lifetimes.clone()
+        } else {
+            let sig_ident = Ident::new(
+                &format!("_generic_tests_Args{}", self.input_sigs.len()),
+                Span::call_site(),
+            );
+            let sig = TestInputSignature::try_build(sig_ident, &inputs)?;
+            let lifetimes = sig.item.lifetimes.clone();
+            self.input_sigs.insert(inputs.clone(), sig);
+            lifetimes
+        };
+        let output = item.sig.output.clone();
+        match &output {
+            ReturnType::Default => {}
+            ReturnType::Type(_, ty) => {
+                if let Some(sig) = self.return_sigs.get(ty) {
+                    lifetimes = lifetimes.union(&sig.item.lifetimes).cloned().collect();
+                } else {
+                    let ret_ident = Ident::new(
+                        &format!("_generic_tests_Ret{}", self.return_sigs.len()),
+                        Span::call_site(),
+                    );
+                    let input_lifetimes = if inputs.is_empty() {
+                        None
+                    } else {
+                        self.input_sigs.get(&inputs).map(|sig| &sig.item.lifetimes)
+                    };
+                    let sig = TestReturnSignature::try_build(ret_ident, &ty, input_lifetimes)?;
+                    lifetimes = lifetimes.union(&sig.item.lifetimes).cloned().collect();
+                    self.return_sigs.insert(ty.clone(), sig);
+                }
+            }
+        }
+        let lifetime_params = filter_lifetime_params(&item.sig.generics, &lifetimes)?;
+        self.test_fns.push(TestFn {
+            test_attrs,
+            name: item.sig.ident.clone(),
+            lifetime_params,
+            inputs,
+            output,
+        });
+        Ok(true)
+    }
+}
+
+fn extract_test_attrs(item: &mut ItemFn) -> Vec<Attribute> {
+    let mut test_attrs = Vec::new();
+    let mut pos = 0;
+    while pos < item.attrs.len() {
+        let attr = &item.attrs[pos];
+        if TEST_ATTRS.iter().any(|name| attr.path.is_ident(name)) {
+            test_attrs.push(item.attrs.remove(pos))
+        } else {
+            pos += 1;
+        }
+    }
+    if !test_attrs.is_empty() {
+        for attr in &item.attrs {
+            if COPIED_ATTRS.iter().any(|name| attr.path.is_ident(name)) {
+                test_attrs.push(attr.clone());
+            }
+        }
+    }
+    test_attrs
+}
+
+fn filter_lifetime_params(
+    generics: &Generics,
+    lifetimes_used: &HashSet<Lifetime>,
+) -> syn::Result<Punctuated<Lifetime, Token![,]>> {
+    fn validate_lifetime_def<'a>(
+        lifetime: &'a Lifetime,
+        bounds: &Punctuated<Lifetime, Token![+]>,
+    ) -> syn::Result<&'a Lifetime> {
+        if !bounds.is_empty() {
+            return Err(Error::new_spanned(
+                bounds,
+                "lifetime bounds are not supported in generic test functions",
+            ));
+        }
+        Ok(lifetime)
+    }
+
+    let mut params = generics
+        .lifetimes()
+        .filter(|def| lifetimes_used.contains(&def.lifetime))
+        .map(|def| validate_lifetime_def(&def.lifetime, &def.bounds).map(Clone::clone))
+        .collect::<syn::Result<Punctuated<_, _>>>()?;
+    if let Some(where_clause) = &generics.where_clause {
+        for predicate in &where_clause.predicates {
+            match predicate {
+                WherePredicate::Lifetime(predicate) => {
+                    if lifetimes_used.contains(&predicate.lifetime) {
+                        let lifetime =
+                            validate_lifetime_def(&predicate.lifetime, &predicate.bounds)?;
+                        params.push(lifetime.clone());
+                    }
+                }
+                WherePredicate::Type(_) | WherePredicate::Eq(_) => {}
+            }
+        }
+    }
+    Ok(params)
+}
+
+pub struct InstArguments(Punctuated<GenericArgument, Token![,]>);
+
+impl InstArguments {
+    pub fn try_extract(item: &mut ItemMod) -> syn::Result<Option<Self>> {
+        for (pos, attr) in item.attrs.iter().enumerate() {
+            if attr.path.is_ident("instantiate_tests") {
+                match attr.style {
+                    AttrStyle::Outer => {}
+                    AttrStyle::Inner(_) => {
+                        return Err(Error::new_spanned(attr, "cannot be an inner attribute"))
+                    }
+                };
+                let AngleBracketedGenericArguments { args, .. } = attr.parse_args()?;
+                item.attrs.remove(pos);
+                return Ok(Some(InstArguments(args)));
+            }
+        }
+        Ok(None)
+    }
+}
+
+impl ToTokens for InstArguments {
+    fn to_tokens(&self, tokens: &mut TokenStream) {
+        self.0.to_tokens(tokens)
+    }
+}

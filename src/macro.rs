@@ -14,7 +14,10 @@
 #![warn(rust_2018_idioms)]
 #![warn(missing_docs)]
 
+mod error;
 mod expand;
+mod extract;
+mod signature;
 
 use proc_macro::{Span, TokenStream};
 use syn::parse_macro_input;

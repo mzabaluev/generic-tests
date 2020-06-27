@@ -122,7 +122,6 @@ mod nested {
         mod foo {}
     }
 
-    #[cfg(feature = "test-compile-fail")]
     mod shadows_root {
         use std::fmt::{self, Display};
 
@@ -131,7 +130,7 @@ mod nested {
 
         impl Display for Foo {
             fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-                write!(f, "Foo")
+                write!(f, "nested Foo")
             }
         }
 
