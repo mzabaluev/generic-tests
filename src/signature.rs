@@ -16,6 +16,10 @@ use std::mem;
 
 pub struct TestSignatureItem {
     pub ident: Ident,
+    // We don't care about the order in which the lifetime parameters/arguments
+    // are listed, as long as it is consistent between all places where
+    // they are enumerated during the macro's invocation.
+    // It should be so once the signature is complete and is not mutated.
     pub lifetimes: HashSet<Lifetime>,
 }
 
@@ -233,6 +237,7 @@ impl VisitMut for LifetimeCollector {
                 self.visit_lifetime_mut(lifetime);
             }
             None => match &self.subst_mode {
+                Mode::Disabled => {}
                 Mode::Input => {
                     let lifetime = self.add_elided_lifetime();
                     ref_type.lifetime = Some(lifetime);
@@ -247,7 +252,6 @@ impl VisitMut for LifetimeCollector {
                     ));
                     return;
                 }
-                Mode::Disabled => {}
             },
         }
         visit_mut::visit_type_mut(self, &mut ref_type.elem)

@@ -160,6 +160,8 @@ impl Instantiator {
                 parse_quote! { #root_path::_generic_tests_call_sigs::#path_seg }
             }
         };
+        // The order of lifetime parameters is not important, as the call
+        // site has them inferred.
         let lifetimes = lifetimes.iter();
         parse_quote! {
             mod shim {
