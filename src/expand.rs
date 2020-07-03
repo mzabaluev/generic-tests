@@ -3,9 +3,9 @@ use crate::extract::{InstArguments, TestFn, Tests};
 
 use proc_macro2::TokenStream;
 use quote::ToTokens;
-use syn::parse_quote;
 use syn::punctuated::Punctuated;
 use syn::visit_mut::{self, VisitMut};
+use syn::{parse_quote, Token};
 use syn::{Error, Expr, Item, ItemMod, Path, ReturnType, Type};
 
 use std::collections::HashSet;
@@ -125,14 +125,13 @@ impl Instantiator {
         root_path.segments.push(parse_quote! { super });
         let name = &test.name;
         let (args_type, fn_args, mut lifetimes): (Type, _, _) = if test.inputs.is_empty() {
-            (parse_quote! { () }, Vec::new(), HashSet::new())
+            (parse_quote! { () }, Punctuated::new(), HashSet::new())
         } else {
             let sig = self
                 .tests
                 .input_sigs
                 .get(&test.inputs)
                 .expect("no input signature");
-            let path_seg = sig.item.to_path_segment();
             let fn_args = sig
                 .args
                 .iter()
@@ -140,7 +139,8 @@ impl Instantiator {
                     let ident = &arg.ident;
                     parse_quote! { _args.#ident }
                 })
-                .collect();
+                .collect::<Punctuated<_, Token![,]>>();
+            let path_seg = sig.item.to_path_segment();
             (
                 parse_quote! { #root_path::_generic_tests_call_sigs::#path_seg },
                 fn_args,
@@ -171,7 +171,7 @@ impl Instantiator {
                     _args: #args_type,
                     ret: *mut #ret_type,
                 ) {
-                    *ret = #root_path::#name::<#inst_args>(#(#fn_args),*)
+                    *ret = #root_path::#name::<#inst_args>(#fn_args)
                 }
             }
         }
