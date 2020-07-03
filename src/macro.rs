@@ -17,11 +17,12 @@
 mod error;
 mod expand;
 mod extract;
+mod options;
 mod signature;
 
-use proc_macro::{Span, TokenStream};
+use proc_macro::TokenStream;
 use syn::parse_macro_input;
-use syn::{Error, ItemMod};
+use syn::{AttributeArgs, ItemMod};
 
 /// Populates a module tree with test cases parameterizing generic definitions.
 ///
@@ -74,10 +75,7 @@ use syn::{Error, ItemMod};
 /// ```
 #[proc_macro_attribute]
 pub fn define(attr: TokenStream, item: TokenStream) -> TokenStream {
-    if !attr.is_empty() {
-        let err = Error::new(Span::call_site().into(), "unexpected attribute input");
-        return err.to_compile_error().into();
-    }
+    let args = parse_macro_input!(attr as AttributeArgs);
     let ast = parse_macro_input!(item as ItemMod);
-    expand::expand(ast).into()
+    expand::expand(args, ast).into()
 }

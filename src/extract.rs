@@ -1,3 +1,4 @@
+use crate::options::MacroOpts;
 use crate::signature::{self, TestInputSignature, TestReturnSignature};
 
 use proc_macro2::{Span, TokenStream};
@@ -11,9 +12,6 @@ use syn::{
 };
 
 use std::collections::{HashMap, HashSet};
-
-const TEST_ATTRS: &[&str] = &["test", "ignore", "should_panic", "bench"];
-const COPIED_ATTRS: &[&str] = &["cfg"];
 
 pub type FnArgs = Punctuated<FnArg, Token![,]>;
 
@@ -35,7 +33,10 @@ pub struct TestFn {
 }
 
 impl Tests {
-    pub fn try_extract(ast: &mut ItemMod) -> syn::Result<(Self, &mut Vec<Item>)> {
+    pub fn try_extract<'ast>(
+        opts: &MacroOpts,
+        ast: &'ast mut ItemMod,
+    ) -> syn::Result<(Self, &'ast mut Vec<Item>)> {
         let span = ast.span();
         let items = match ast.content.as_mut() {
             Some(content) => &mut content.1,
@@ -45,7 +46,7 @@ impl Tests {
         let mut tests = Tests::default();
         for item in items.iter_mut() {
             if let Item::Fn(item) = item {
-                if tests.try_extract_fn(item)? {
+                if tests.try_extract_fn(opts, item)? {
                     let item_generic_arity = item.sig.generics.params.len();
                     match generic_arity {
                         None => {
@@ -75,8 +76,8 @@ impl Tests {
         Ok((tests, items))
     }
 
-    fn try_extract_fn(&mut self, item: &mut ItemFn) -> syn::Result<bool> {
-        let test_attrs = extract_test_attrs(item);
+    fn try_extract_fn(&mut self, opts: &MacroOpts, item: &mut ItemFn) -> syn::Result<bool> {
+        let test_attrs = extract_test_attrs(opts, item);
         if test_attrs.is_empty() {
             return Ok(false);
         }
@@ -132,20 +133,20 @@ impl Tests {
     }
 }
 
-fn extract_test_attrs(item: &mut ItemFn) -> Vec<Attribute> {
+fn extract_test_attrs(opts: &MacroOpts, item: &mut ItemFn) -> Vec<Attribute> {
     let mut test_attrs = Vec::new();
     let mut pos = 0;
     while pos < item.attrs.len() {
         let attr = &item.attrs[pos];
-        if TEST_ATTRS.iter().any(|name| attr.path.is_ident(name)) {
-            test_attrs.push(item.attrs.remove(pos))
-        } else {
-            pos += 1;
+        if opts.is_test_attr(&attr) {
+            test_attrs.push(item.attrs.remove(pos));
+            continue;
         }
+        pos += 1;
     }
     if !test_attrs.is_empty() {
         for attr in &item.attrs {
-            if COPIED_ATTRS.iter().any(|name| attr.path.is_ident(name)) {
+            if opts.is_copied_attr(&attr) {
                 test_attrs.push(attr.clone());
             }
         }

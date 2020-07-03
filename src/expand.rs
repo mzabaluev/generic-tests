@@ -1,24 +1,26 @@
 use crate::error::ErrorRecord;
 use crate::extract::{InstArguments, TestFn, Tests};
+use crate::options::MacroOpts;
 
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::punctuated::Punctuated;
 use syn::visit_mut::{self, VisitMut};
 use syn::{parse_quote, Token};
-use syn::{Error, Expr, Item, ItemMod, Path, ReturnType, Type};
+use syn::{AttributeArgs, Error, Expr, Item, ItemMod, Path, ReturnType, Type};
 
 use std::collections::HashSet;
 
-pub fn expand(mut ast: ItemMod) -> TokenStream {
-    match transform(&mut ast) {
+pub fn expand(args: AttributeArgs, mut ast: ItemMod) -> TokenStream {
+    match transform(args, &mut ast) {
         Ok(()) => ast.into_token_stream(),
         Err(e) => e.to_compile_error(),
     }
 }
 
-fn transform(ast: &mut ItemMod) -> syn::Result<()> {
-    let (tests, items) = Tests::try_extract(ast)?;
+fn transform(args: AttributeArgs, ast: &mut ItemMod) -> syn::Result<()> {
+    let opts = MacroOpts::from_args(args)?;
+    let (tests, items) = Tests::try_extract(&opts, ast)?;
     instantiate(tests, items)
 }
 
