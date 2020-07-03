@@ -166,25 +166,23 @@ fn filter_lifetime_params(
         Ok(lifetime)
     }
 
-    let mut params = generics
-        .lifetimes()
-        .filter(|def| lifetimes_used.contains(&def.lifetime))
-        .map(|def| validate_lifetime_def(&def.lifetime, &def.bounds).map(Clone::clone))
-        .collect::<syn::Result<Punctuated<_, _>>>()?;
     if let Some(where_clause) = &generics.where_clause {
         for predicate in &where_clause.predicates {
             match predicate {
                 WherePredicate::Lifetime(predicate) => {
                     if lifetimes_used.contains(&predicate.lifetime) {
-                        let lifetime =
-                            validate_lifetime_def(&predicate.lifetime, &predicate.bounds)?;
-                        params.push(lifetime.clone());
+                        validate_lifetime_def(&predicate.lifetime, &predicate.bounds)?;
                     }
                 }
                 WherePredicate::Type(_) | WherePredicate::Eq(_) => {}
             }
         }
     }
+    let params = generics
+        .lifetimes()
+        .filter(|def| lifetimes_used.contains(&def.lifetime))
+        .map(|def| validate_lifetime_def(&def.lifetime, &def.bounds).map(Clone::clone))
+        .collect::<syn::Result<_>>()?;
     Ok(params)
 }
 
