@@ -1,21 +1,27 @@
 use crate::error::ErrorRecord;
 
 use proc_macro2::Span;
-use syn::parse_quote;
+use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::visit_mut::{self, VisitMut};
+use syn::{parse_quote, Token};
 use syn::{
-    BoundLifetimes, ConstParam, Error, FnArg, GenericParam, Generics, Ident, Lifetime,
+    BoundLifetimes, ConstParam, Error, FnArg, GenericParam, Generics, Ident, ItemFn, Lifetime,
     ParenthesizedGenericArguments, Pat, PatIdent, Path, PathSegment, ReturnType, Signature,
-    TraitBound, Type, TypeBareFn, TypeParam, TypeReference,
+    TraitBound, Type, TypeBareFn, TypeParam, TypeReference, WherePredicate,
 };
 
 use std::collections::HashSet;
 use std::mem;
 
+pub struct TestFnSignature {
+    pub input: TestInputSignature,
+    pub output: TestReturnSignature,
+    pub lifetime_params: Punctuated<Lifetime, Token![,]>,
+}
+
 pub struct TestSignatureItem {
-    pub ident: Ident,
     // We don't care about the order in which the lifetime parameters/arguments
     // are listed, as long as it is consistent between all places where
     // they are enumerated during the macro's invocation.
@@ -44,8 +50,8 @@ impl TestSignatureItem {
         parse_quote! { <#(#lifetimes),*> }
     }
 
-    pub fn to_path_segment(&self) -> PathSegment {
-        let ident = &self.ident;
+    pub fn path_segment(&self, name: &str) -> PathSegment {
+        let ident = Ident::new(name, Span::call_site());
         if self.lifetimes.is_empty() {
             parse_quote! { #ident }
         } else {
@@ -55,11 +61,30 @@ impl TestSignatureItem {
     }
 }
 
+impl TestFnSignature {
+    pub fn try_build(item: &ItemFn) -> syn::Result<Self> {
+        validate(&item.sig)?;
+        let input = TestInputSignature::try_build(&item.sig.inputs)?;
+        let mut lifetimes = input.item.lifetimes.clone();
+        let output = match &item.sig.output {
+            ReturnType::Default => TestReturnSignature::default(),
+            ReturnType::Type(_, ty) => {
+                let sig = TestReturnSignature::try_build(&ty, &input.item.lifetimes)?;
+                lifetimes = lifetimes.union(&sig.item.lifetimes).cloned().collect();
+                sig
+            }
+        };
+        let lifetime_params = filter_fn_lifetimes(&item.sig.generics, &lifetimes)?;
+        Ok(TestFnSignature {
+            input,
+            output,
+            lifetime_params,
+        })
+    }
+}
+
 impl TestInputSignature {
-    pub fn try_build<'a>(
-        ident: Ident,
-        inputs: impl IntoIterator<Item = &'a FnArg>,
-    ) -> syn::Result<Self> {
+    fn try_build<'a>(inputs: impl IntoIterator<Item = &'a FnArg>) -> syn::Result<Self> {
         let mut lifetime_collector = LifetimeCollector::new(LifetimeSubstMode::Input);
         let args = inputs
             .into_iter()
@@ -86,38 +111,44 @@ impl TestInputSignature {
             .collect::<syn::Result<_>>()?;
         let lifetimes = lifetime_collector.validate()?;
         Ok(TestInputSignature {
-            item: TestSignatureItem { ident, lifetimes },
+            item: TestSignatureItem { lifetimes },
             args,
         })
     }
 }
 
+impl Default for TestReturnSignature {
+    fn default() -> Self {
+        TestReturnSignature {
+            item: TestSignatureItem {
+                lifetimes: Default::default(),
+            },
+            ty: Box::new(parse_quote! { () }),
+        }
+    }
+}
+
 impl TestReturnSignature {
-    pub fn try_build(
-        ident: Ident,
-        ty: &Type,
-        input_lifetimes: Option<&HashSet<Lifetime>>,
-    ) -> syn::Result<Self> {
+    fn try_build(ty: &Type, input_lifetimes: &HashSet<Lifetime>) -> syn::Result<Self> {
         use LifetimeSubstMode as Mode;
 
-        let subst_mode = input_lifetimes
-            .and_then(|lifetimes| {
-                let mut iter = lifetimes.iter();
-                iter.next().map(|lifetime| {
-                    if iter.len() == 0 {
-                        Mode::Output(lifetime.clone())
-                    } else {
-                        Mode::Fail
-                    }
-                })
+        let subst_mode = {
+            let mut iter = input_lifetimes.iter();
+            iter.next().map(|lifetime| {
+                if iter.len() == 0 {
+                    Mode::Output(lifetime.clone())
+                } else {
+                    Mode::Fail
+                }
             })
-            .unwrap_or(Mode::Fail);
+        }
+        .unwrap_or(Mode::Fail);
         let mut lifetime_collector = LifetimeCollector::new(subst_mode);
         let mut ty = Box::new(ty.clone());
         lifetime_collector.visit_type_mut(&mut ty);
         let lifetimes = lifetime_collector.validate()?;
         Ok(TestReturnSignature {
-            item: TestSignatureItem { ident, lifetimes },
+            item: TestSignatureItem { lifetimes },
             ty,
         })
     }
@@ -395,7 +426,7 @@ impl<'ast> Visit<'ast> for GenericParamCatcher {
     }
 }
 
-pub fn validate(sig: &Signature) -> syn::Result<()> {
+fn validate(sig: &Signature) -> syn::Result<()> {
     if sig.constness.is_some() {
         return Err(Error::new_spanned(
             &sig.constness,
@@ -423,4 +454,41 @@ pub fn validate(sig: &Signature) -> syn::Result<()> {
         ReturnType::Type(_, ty) => catcher.visit_type(&ty),
     }
     catcher.errors.check()
+}
+
+fn filter_fn_lifetimes(
+    generics: &Generics,
+    lifetimes_used: &HashSet<Lifetime>,
+) -> syn::Result<Punctuated<Lifetime, Token![,]>> {
+    let lifetimes = generics
+        .lifetimes()
+        .filter(|def| lifetimes_used.contains(&def.lifetime))
+        .map(|def| validate_lifetime_def(&def.lifetime, &def.bounds).map(|()| def.lifetime.clone()))
+        .collect::<syn::Result<_>>()?;
+    if let Some(where_clause) = &generics.where_clause {
+        for predicate in &where_clause.predicates {
+            match predicate {
+                WherePredicate::Lifetime(predicate) => {
+                    if lifetimes_used.contains(&predicate.lifetime) {
+                        validate_lifetime_def(&predicate.lifetime, &predicate.bounds)?;
+                    }
+                }
+                WherePredicate::Type(_) | WherePredicate::Eq(_) => {}
+            }
+        }
+    }
+    Ok(lifetimes)
+}
+
+fn validate_lifetime_def<'ast>(
+    _: &'ast Lifetime,
+    bounds: &'ast Punctuated<Lifetime, Token![+]>,
+) -> syn::Result<()> {
+    if !bounds.is_empty() {
+        return Err(Error::new_spanned(
+            bounds,
+            "lifetime bounds are not supported in generic test functions",
+        ));
+    }
+    Ok(())
 }

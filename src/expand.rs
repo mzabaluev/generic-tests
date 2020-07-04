@@ -7,9 +7,7 @@ use quote::ToTokens;
 use syn::punctuated::Punctuated;
 use syn::visit_mut::{self, VisitMut};
 use syn::{parse_quote, Token};
-use syn::{AttributeArgs, Error, Expr, Item, ItemMod, Path, ReturnType, Type};
-
-use std::collections::HashSet;
+use syn::{AttributeArgs, Error, Expr, Item, ItemMod, Path};
 
 pub fn expand(args: AttributeArgs, mut ast: ItemMod) -> TokenStream {
     match transform(args, &mut ast) {
@@ -34,39 +32,69 @@ fn instantiate(tests: Tests, items: &mut Vec<Item>) -> syn::Result<()> {
         instantiator.visit_item_mut(item);
     }
     instantiator.errors.check()?;
-    items.push(call_sigs_mod(&instantiator.tests));
     Ok(())
 }
 
-fn call_sigs_mod(tests: &Tests) -> Item {
-    let mut content = Vec::<Item>::new();
-    for sig in tests.input_sigs.values() {
-        let ident = &sig.item.ident;
-        let generics = sig.item.lifetime_generics();
-        let arg_ident = sig.args.iter().map(|arg| &arg.ident);
-        let arg_ty = sig.args.iter().map(|arg| &*arg.ty);
-        content.push(parse_quote! {
-            pub(super) struct #ident #generics {
-                #(pub #arg_ident: #arg_ty),*
-            }
+fn shim_mod(test: &TestFn, inst_args: &InstArguments, root_path: &Path) -> Item {
+    let mod_call_sig = call_sig_mod(test, root_path);
+    let name = &test.ident;
+    let input_sig = &test.sig.input;
+    let fn_args = input_sig
+        .args
+        .iter()
+        .map(|arg| -> Expr {
+            let ident = &arg.ident;
+            parse_quote! { _args.#ident }
         })
-    }
-    for sig in tests.return_sigs.values() {
-        let ident = &sig.item.ident;
-        let generics = sig.item.lifetime_generics();
-        let ty = &*sig.ty;
-        content.push(parse_quote! {
-            pub(super) type #ident #generics = #ty;
-        })
-    }
+        .collect::<Punctuated<_, Token![,]>>();
+    let args_path = input_sig.item.path_segment("Args");
+    let return_sig = &test.sig.output;
+    let ret_path = return_sig.item.path_segment("Ret");
+    // The order of lifetime parameters is not important, as the call
+    // site has them inferred.
+    let lifetimes = input_sig.item.lifetimes.union(&return_sig.item.lifetimes);
+    let asyncness = test.asyncness;
+    let call = wrap_async(
+        asyncness,
+        parse_quote! {
+            super::#root_path::#name::<#inst_args>(#fn_args)
+        },
+    );
     parse_quote! {
-        mod _generic_tests_call_sigs {
-            #![allow(non_camel_case_types)]
+        mod shim {
+            #mod_call_sig
 
             #[allow(unused_imports)]
-            use super::*;
+            use super::super::*;
 
-            #(#content)*
+            pub(super) #asyncness unsafe fn shim<#(#lifetimes),*>(
+                _args: _generic_tests_call_sig::#args_path,
+                ret: *mut _generic_tests_call_sig::#ret_path,
+            ) {
+                *ret = #call
+            }
+        }
+    }
+}
+
+fn call_sig_mod(test: &TestFn, root_path: &Path) -> Item {
+    let input_sig = &test.sig.input;
+    let arg_generics = input_sig.item.lifetime_generics();
+    let arg_ident = input_sig.args.iter().map(|arg| &arg.ident);
+    let arg_ty = input_sig.args.iter().map(|arg| &*arg.ty);
+    let return_sig = &test.sig.output;
+    let ret_generics = return_sig.item.lifetime_generics();
+    let ret_ty = &*return_sig.ty;
+    parse_quote! {
+        pub(super) mod _generic_tests_call_sig {
+            #[allow(unused_imports)]
+            use super::super::#root_path::*;
+
+            pub(in super::super) struct Args #arg_generics {
+                #(pub #arg_ident: #arg_ty),*
+            }
+
+            pub(super) type Ret #ret_generics = #ret_ty;
         }
     }
 }
@@ -99,11 +127,11 @@ impl Instantiator {
         for test in &self.tests.test_fns {
             let test_attrs = &test.test_attrs;
             let name = &test.ident;
-            let lifetime_params = &test.lifetime_params;
+            let lifetime_params = &test.sig.lifetime_params;
             let inputs = &test.inputs;
             let output = &test.output;
-            let shim_mod = self.shim_mod(test, &inst_args, &root_path);
-            let args_init = self.args_init(test);
+            let mod_shim = shim_mod(test, &inst_args, &root_path);
+            let args_field_init = test.sig.input.args.iter().map(|arg| &arg.ident);
             let asyncness = test.asyncness;
             let unsafety = test.unsafety;
             let call = wrap_async(
@@ -115,8 +143,9 @@ impl Instantiator {
             content.push(parse_quote! {
                 #(#test_attrs)*
                 #asyncness #unsafety fn #name<#lifetime_params>(#inputs) #output {
-                    #shim_mod
-                    let args = #args_init;
+                    #mod_shim
+
+                    let args = shim::_generic_tests_call_sig::Args { #(#args_field_init),* };
                     let mut ret = ::core::mem::MaybeUninit::uninit();
                     unsafe {
                         #call;
@@ -135,87 +164,6 @@ impl Instantiator {
         Path {
             leading_colon: None,
             segments,
-        }
-    }
-
-    fn shim_mod(&self, test: &TestFn, inst_args: &InstArguments, root_path: &Path) -> Item {
-        let mut root_path = root_path.clone();
-        root_path.segments.push(parse_quote! { super });
-        let name = &test.ident;
-        let (args_type, fn_args, mut lifetimes): (Type, _, _) = if test.inputs.is_empty() {
-            (parse_quote! { () }, Punctuated::new(), HashSet::new())
-        } else {
-            let sig = self
-                .tests
-                .input_sigs
-                .get(&test.inputs)
-                .expect("no input signature");
-            let fn_args = sig
-                .args
-                .iter()
-                .map(|arg| -> Expr {
-                    let ident = &arg.ident;
-                    parse_quote! { _args.#ident }
-                })
-                .collect::<Punctuated<_, Token![,]>>();
-            let path_seg = sig.item.to_path_segment();
-            (
-                parse_quote! { #root_path::_generic_tests_call_sigs::#path_seg },
-                fn_args,
-                sig.item.lifetimes.clone(),
-            )
-        };
-        let ret_type: Type = match &test.output {
-            ReturnType::Default => parse_quote! { () },
-            ReturnType::Type(_, ty) => {
-                let sig = self
-                    .tests
-                    .return_sigs
-                    .get(&*ty)
-                    .expect("no return signature");
-                lifetimes = lifetimes.union(&sig.item.lifetimes).cloned().collect();
-                let path_seg = sig.item.to_path_segment();
-                parse_quote! { #root_path::_generic_tests_call_sigs::#path_seg }
-            }
-        };
-        // The order of lifetime parameters is not important, as the call
-        // site has them inferred.
-        let lifetimes = lifetimes.iter();
-        let asyncness = test.asyncness;
-        let call = wrap_async(
-            asyncness,
-            parse_quote! {
-                #root_path::#name::<#inst_args>(#fn_args)
-            },
-        );
-        parse_quote! {
-            mod shim {
-                #[allow(unused_imports)]
-                use super::super::*;
-                pub(super) #asyncness unsafe fn shim<#(#lifetimes),*>(
-                    _args: #args_type,
-                    ret: *mut #ret_type,
-                ) {
-                    *ret = #call
-                }
-            }
-        }
-    }
-
-    fn args_init(&self, test: &TestFn) -> Expr {
-        if test.inputs.is_empty() {
-            parse_quote! { () }
-        } else {
-            let sig = self
-                .tests
-                .input_sigs
-                .get(&test.inputs)
-                .expect("no input signature");
-            let struct_name = &sig.item.ident;
-            let field_init = sig.args.iter().map(|arg| &arg.ident);
-            parse_quote! {
-                _generic_tests_call_sigs::#struct_name { #(#field_init),* }
-            }
         }
     }
 }
