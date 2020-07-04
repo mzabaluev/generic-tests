@@ -211,3 +211,31 @@ mod cfg_attr {
     #[instantiate_tests(<()>)]
     mod inst {}
 }
+
+// To test how custom attributes work, abuse the system by listing `allow`
+// as a test attribute.
+// A function annotated with `allow` should get instantiated, and the
+// `allow` attribute on the original function should get erased. This
+// does not trigger the dead code lint, though, because the instantiated
+// "test" function calls the generic one and itself sports the `allow` attribute
+// disabling the lint.
+#[generic_tests::define(attrs(allow, test))]
+mod custom_test_attrs {
+    #![deny(dead_code)]
+
+    struct Borrowed<'a> {
+        #[allow(dead_code)]
+        a: &'a str,
+    }
+
+    #[allow(dead_code)]
+    fn kinky_sig<T>(a: &str) -> Borrowed<'_> {
+        Borrowed { a }
+    }
+
+    #[test]
+    fn test_attr_works_too_when_listed<T>() {}
+
+    #[instantiate_tests(<()>)]
+    mod inst {}
+}
