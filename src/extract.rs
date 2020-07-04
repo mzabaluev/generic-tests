@@ -7,8 +7,9 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::Token;
 use syn::{
-    AngleBracketedGenericArguments, AttrStyle, Attribute, Error, FnArg, GenericArgument, Generics,
-    Ident, Item, ItemFn, ItemMod, Lifetime, ReturnType, Type, WherePredicate,
+    AngleBracketedGenericArguments, AttrStyle, Attribute, Error, FnArg, GenericArgument,
+    GenericParam, Generics, Ident, Item, ItemFn, ItemMod, Lifetime, ReturnType, Type,
+    WherePredicate,
 };
 
 use std::collections::{HashMap, HashSet};
@@ -42,29 +43,24 @@ impl Tests {
             Some(content) => &mut content.1,
             None => return Err(Error::new(span, "only inline modules are supported")),
         };
-        let mut generic_arity = None;
+        let mut mod_wide_generic_arity = None;
         let mut tests = Tests::default();
         for item in items.iter_mut() {
             if let Item::Fn(item) = item {
                 if tests.try_extract_fn(opts, item)? {
-                    let item_generic_arity = item.sig.generics.params.len();
-                    match generic_arity {
+                    let fn_generic_arity = generic_arity(&item.sig.generics);
+                    match mod_wide_generic_arity {
                         None => {
-                            generic_arity = Some(item_generic_arity);
+                            mod_wide_generic_arity = Some(fn_generic_arity);
                         }
                         Some(n) => {
-                            if item_generic_arity != n {
-                                let span = if item_generic_arity == 0 {
-                                    item.span()
-                                } else {
-                                    item.sig.generics.params.span()
-                                };
-                                return Err(Error::new(
-                                    span,
+                            if fn_generic_arity != n {
+                                return Err(Error::new_spanned(
+                                    &*item,
                                     format!(
-                                        "test function has {} generic parameters \
+                                        "test function `{}` has {} generic parameters \
                                         while others in the same module have {}",
-                                        item_generic_arity, n
+                                        item.sig.ident, fn_generic_arity, n
                                     ),
                                 ));
                             }
@@ -152,6 +148,17 @@ fn extract_test_attrs(opts: &MacroOpts, item: &mut ItemFn) -> Vec<Attribute> {
         }
     }
     test_attrs
+}
+
+fn generic_arity(generics: &Generics) -> usize {
+    generics
+        .params
+        .iter()
+        .filter(|param| match param {
+            GenericParam::Type(_) | GenericParam::Const(_) => true,
+            GenericParam::Lifetime(_) => false,
+        })
+        .count()
 }
 
 fn filter_lifetime_params(
