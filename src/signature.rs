@@ -385,6 +385,24 @@ impl<'ast> Visit<'ast> for GenericParamCatcher {
 }
 
 pub fn validate(sig: &Signature) -> syn::Result<()> {
+    if sig.constness.is_some() {
+        return Err(Error::new_spanned(
+            &sig.constness,
+            "generic test function cannot be const",
+        ));
+    }
+    if sig.abi.is_some() {
+        return Err(Error::new_spanned(
+            &sig.abi,
+            "extern ABI is not supported in a generic test function",
+        ));
+    }
+    if sig.variadic.is_some() {
+        return Err(Error::new_spanned(
+            &sig.variadic,
+            "variadic arguments are not supported in a generic test function",
+        ));
+    }
     let mut catcher = GenericParamCatcher::new(&sig.generics);
     for arg in &sig.inputs {
         catcher.visit_fn_arg(arg);

@@ -26,7 +26,9 @@ pub struct Tests {
 
 pub struct TestFn {
     pub test_attrs: Vec<Attribute>,
-    pub name: Ident,
+    pub asyncness: Option<Token![async]>,
+    pub unsafety: Option<Token![unsafe]>,
+    pub ident: Ident,
     pub lifetime_params: Punctuated<Lifetime, Token![,]>,
     pub inputs: FnArgs,
     pub output: ReturnType,
@@ -119,7 +121,9 @@ impl Tests {
         let lifetime_params = filter_lifetime_params(&item.sig.generics, &lifetimes)?;
         self.test_fns.push(TestFn {
             test_attrs,
-            name: item.sig.ident.clone(),
+            asyncness: item.sig.asyncness,
+            unsafety: item.sig.unsafety,
+            ident: item.sig.ident.clone(),
             lifetime_params,
             inputs,
             output,

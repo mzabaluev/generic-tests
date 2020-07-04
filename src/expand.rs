@@ -69,6 +69,14 @@ fn call_sigs_mod(tests: &Tests) -> Item {
     }
 }
 
+fn wrap_async(asyncness: Option<Token![async]>, expr: Expr) -> Expr {
+    if asyncness.is_none() {
+        expr
+    } else {
+        parse_quote! { expr.await }
+    }
+}
+
 struct Instantiator {
     tests: Tests,
     depth: u32,
@@ -88,20 +96,28 @@ impl Instantiator {
 
         for test in &self.tests.test_fns {
             let test_attrs = &test.test_attrs;
-            let name = &test.name;
+            let name = &test.ident;
             let lifetime_params = &test.lifetime_params;
             let inputs = &test.inputs;
             let output = &test.output;
             let shim_mod = self.shim_mod(test, &inst_args, &root_path);
             let args_init = self.args_init(test);
+            let asyncness = test.asyncness;
+            let unsafety = test.unsafety;
+            let call = wrap_async(
+                asyncness,
+                parse_quote! {
+                    shim::shim(args, ret.as_mut_ptr())
+                },
+            );
             content.push(parse_quote! {
                 #(#test_attrs)*
-                fn #name<#lifetime_params>(#inputs) #output {
+                #asyncness #unsafety fn #name<#lifetime_params>(#inputs) #output {
                     #shim_mod
                     let args = #args_init;
                     let mut ret = ::core::mem::MaybeUninit::uninit();
                     unsafe {
-                        shim::shim(args, ret.as_mut_ptr());
+                        #call;
                         ret.assume_init()
                     }
                 }
@@ -123,7 +139,7 @@ impl Instantiator {
     fn shim_mod(&self, test: &TestFn, inst_args: &InstArguments, root_path: &Path) -> Item {
         let mut root_path = root_path.clone();
         root_path.segments.push(parse_quote! { super });
-        let name = &test.name;
+        let name = &test.ident;
         let (args_type, fn_args, mut lifetimes): (Type, _, _) = if test.inputs.is_empty() {
             (parse_quote! { () }, Punctuated::new(), HashSet::new())
         } else {
@@ -163,15 +179,22 @@ impl Instantiator {
         // The order of lifetime parameters is not important, as the call
         // site has them inferred.
         let lifetimes = lifetimes.iter();
+        let asyncness = test.asyncness;
+        let call = wrap_async(
+            asyncness,
+            parse_quote! {
+                #root_path::#name::<#inst_args>(#fn_args)
+            },
+        );
         parse_quote! {
             mod shim {
                 #[allow(unused_imports)]
                 use super::super::*;
-                pub(super) unsafe fn shim<#(#lifetimes),*>(
+                pub(super) #asyncness unsafe fn shim<#(#lifetimes),*>(
                     _args: #args_type,
                     ret: *mut #ret_type,
                 ) {
-                    *ret = #root_path::#name::<#inst_args>(#fn_args)
+                    *ret = #call
                 }
             }
         }
