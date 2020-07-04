@@ -80,8 +80,8 @@ fn shim_mod(test: &TestFn, inst_args: &InstArguments, root_path: &Path) -> Item 
 fn call_sig_mod(test: &TestFn, root_path: &Path) -> Item {
     let input_sig = &test.sig.input;
     let arg_generics = input_sig.item.lifetime_generics();
-    let arg_ident = input_sig.args.iter().map(|arg| &arg.ident);
-    let arg_ty = input_sig.args.iter().map(|arg| &*arg.ty);
+    let field_ident = input_sig.args.iter().map(|arg| &arg.ident);
+    let field_ty = input_sig.args.iter().map(|arg| &*arg.field_ty);
     let return_sig = &test.sig.output;
     let ret_generics = return_sig.item.lifetime_generics();
     let ret_ty = &*return_sig.ty;
@@ -91,7 +91,7 @@ fn call_sig_mod(test: &TestFn, root_path: &Path) -> Item {
             use super::super::#root_path::*;
 
             pub(in super::super) struct Args #arg_generics {
-                #(pub #arg_ident: #arg_ty),*
+                #(pub #field_ident: #field_ty),*
             }
 
             pub(super) type Ret #ret_generics = #ret_ty;
@@ -128,7 +128,7 @@ impl Instantiator {
             let test_attrs = &test.test_attrs;
             let name = &test.ident;
             let lifetime_params = &test.sig.lifetime_params;
-            let inputs = &test.inputs;
+            let fn_args = test.sig.input.args.iter().map(|arg| arg.to_fn_arg());
             let output = &test.output;
             let mod_shim = shim_mod(test, &inst_args, &root_path);
             let args_field_init = test.sig.input.args.iter().map(|arg| &arg.ident);
@@ -142,7 +142,7 @@ impl Instantiator {
             );
             content.push(parse_quote! {
                 #(#test_attrs)*
-                #asyncness #unsafety fn #name<#lifetime_params>(#inputs) #output {
+                #asyncness #unsafety fn #name<#lifetime_params>(#(#fn_args),*) #output {
                     #mod_shim
 
                     let args = shim::_generic_tests_call_sig::Args { #(#args_field_init),* };

@@ -7,8 +7,8 @@ use syn::punctuated::Punctuated;
 use syn::spanned::Spanned;
 use syn::Token;
 use syn::{
-    AngleBracketedGenericArguments, AttrStyle, Attribute, Error, FnArg, GenericArgument,
-    GenericParam, Generics, Ident, Item, ItemFn, ItemMod, ReturnType,
+    AngleBracketedGenericArguments, AttrStyle, Attribute, Error, GenericArgument, GenericParam,
+    Generics, Ident, Item, ItemFn, ItemMod, ReturnType,
 };
 
 #[derive(Default)]
@@ -21,7 +21,6 @@ pub struct TestFn {
     pub asyncness: Option<Token![async]>,
     pub unsafety: Option<Token![unsafe]>,
     pub ident: Ident,
-    pub inputs: Punctuated<FnArg, Token![,]>,
     pub output: ReturnType,
     pub sig: TestFnSignature,
 }
@@ -53,7 +52,6 @@ impl Tests {
                     asyncness: item.sig.asyncness,
                     unsafety: item.sig.unsafety,
                     ident: item.sig.ident.clone(),
-                    inputs: item.sig.inputs.clone(),
                     output: item.sig.output.clone(),
                     sig,
                 });

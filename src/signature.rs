@@ -6,9 +6,9 @@ use syn::visit::{self, Visit};
 use syn::visit_mut::{self, VisitMut};
 use syn::{parse_quote, Token};
 use syn::{
-    BoundLifetimes, ConstParam, Error, FnArg, GenericParam, Generics, Ident, ItemFn, Lifetime,
-    ParenthesizedGenericArguments, Pat, PatIdent, Path, PathSegment, ReturnType, Signature,
-    TraitBound, Type, TypeBareFn, TypeParam, TypeReference, WherePredicate,
+    Attribute, BoundLifetimes, ConstParam, Error, FnArg, GenericParam, Generics, Ident, ItemFn,
+    Lifetime, ParenthesizedGenericArguments, Pat, PatIdent, Path, PathSegment, ReturnType,
+    Signature, TraitBound, Type, TypeBareFn, TypeParam, TypeReference, WherePredicate,
 };
 
 use std::collections::HashSet;
@@ -34,8 +34,12 @@ pub struct TestInputSignature {
 }
 
 pub struct TestFnArg {
+    pub attrs: Vec<Attribute>,
     pub ident: Ident,
-    pub ty: Box<Type>,
+    // Argument type as in the original function
+    pub arg_ty: Box<Type>,
+    // Type with all lifetimes made explicit for the arg structure field
+    pub field_ty: Box<Type>,
 }
 
 pub struct TestReturnSignature {
@@ -56,6 +60,17 @@ impl TestSignatureItem {
         } else {
             let lifetimes = self.lifetimes.iter();
             parse_quote! { #ident<#(#lifetimes),*> }
+        }
+    }
+}
+
+impl TestFnArg {
+    pub fn to_fn_arg(&self) -> FnArg {
+        let attrs = self.attrs.iter();
+        let ident = &self.ident;
+        let ty = &*self.arg_ty;
+        parse_quote! {
+            #(#attrs)* #ident: #ty
         }
     }
 }
@@ -88,13 +103,28 @@ impl TestInputSignature {
         let args = inputs
             .into_iter()
             .map(|input| match input {
-                FnArg::Typed(type_pat) => match &*type_pat.pat {
-                    Pat::Ident(PatIdent { ident, .. }) => {
-                        let mut ty = type_pat.ty.clone();
-                        lifetime_collector.visit_type_mut(&mut ty);
+                FnArg::Typed(arg) => match &*arg.pat {
+                    Pat::Ident(PatIdent {
+                        ident,
+                        mutability: _,
+                        attrs,
+                        by_ref,
+                        subpat,
+                    }) => {
+                        if by_ref.is_some() || subpat.is_some() || !attrs.is_empty() {
+                            return Err(Error::new_spanned(
+                                &arg.pat,
+                                "unsupported features in an argument pattern",
+                            ));
+                        }
+                        let arg_ty = arg.ty.clone();
+                        let mut field_ty = arg_ty.clone();
+                        lifetime_collector.visit_type_mut(&mut field_ty);
                         Ok(TestFnArg {
+                            attrs: arg.attrs.clone(),
                             ident: ident.clone(),
-                            ty,
+                            arg_ty,
+                            field_ty,
                         })
                     }
                     Pat::Wild(wild) => Err(Error::new_spanned(
@@ -102,7 +132,7 @@ impl TestInputSignature {
                         "wildcard pattern not allowed in generic test function input",
                     )),
                     _ => Err(Error::new_spanned(
-                        type_pat,
+                        arg,
                         "unsupported argument pattern in generic test function input",
                     )),
                 },
