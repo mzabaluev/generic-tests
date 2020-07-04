@@ -98,6 +98,10 @@ impl TestInputSignature {
                             ty,
                         })
                     }
+                    Pat::Wild(wild) => Err(Error::new_spanned(
+                        wild,
+                        "wildcard pattern not allowed in generic test function input",
+                    )),
                     _ => Err(Error::new_spanned(
                         type_pat,
                         "unsupported argument pattern in test function input",
