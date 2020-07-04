@@ -152,6 +152,12 @@ impl LifetimeCollector {
         }
     }
 
+    fn collect_lifetime(&mut self, lifetime: &Lifetime) {
+        if !self.lifetimes.contains(lifetime) && !self.bound_lifetimes.contains(lifetime) {
+            self.lifetimes.insert(lifetime.clone());
+        }
+    }
+
     fn add_elided_lifetime(&mut self) -> Lifetime {
         let symbol = format!("'_generic_tests_{}", self.lifetimes.len());
         let lifetime = Lifetime::new(&symbol, Span::call_site());
@@ -179,8 +185,8 @@ impl LifetimeCollector {
             ));
             return;
         }
-        let lifetime = if let Some(lifetime) = self.lifetimes.iter().next() {
-            lifetime
+        let (lifetime, injected) = if let Some(lifetime) = self.lifetimes.iter().next() {
+            (lifetime, false)
         } else {
             match &self.subst_mode {
                 Mode::Input => {
@@ -190,7 +196,7 @@ impl LifetimeCollector {
                     ));
                     return;
                 }
-                Mode::Output(lifetime) => lifetime,
+                Mode::Output(lifetime) => (lifetime, true),
                 Mode::Fail => {
                     self.errors.add_error(Error::new_spanned(
                         placeholder,
@@ -202,6 +208,9 @@ impl LifetimeCollector {
             }
         };
         placeholder.ident = lifetime.ident.clone();
+        if injected {
+            self.collect_lifetime(&placeholder);
+        }
         self.placeholder_lifetime_at = Some(placeholder.span());
     }
 
@@ -224,8 +233,8 @@ impl VisitMut for LifetimeCollector {
         }
         if lifetime.ident == "_" {
             self.subst_placeholder_lifetime(lifetime);
-        } else if !self.lifetimes.contains(lifetime) && !self.bound_lifetimes.contains(lifetime) {
-            self.lifetimes.insert(lifetime.clone());
+        } else {
+            self.collect_lifetime(lifetime);
         }
     }
 
@@ -243,7 +252,9 @@ impl VisitMut for LifetimeCollector {
                     ref_type.lifetime = Some(lifetime);
                 }
                 Mode::Output(lifetime) => {
-                    ref_type.lifetime = Some(lifetime.clone());
+                    let lifetime = lifetime.clone();
+                    self.collect_lifetime(&lifetime);
+                    ref_type.lifetime = Some(lifetime);
                 }
                 Mode::Fail => {
                     self.errors.add_error(Error::new_spanned(
