@@ -2,7 +2,6 @@ use crate::error::ErrorRecord;
 
 use proc_macro2::Span;
 use syn::punctuated::Punctuated;
-use syn::spanned::Spanned;
 use syn::visit::{self, Visit};
 use syn::visit_mut::{self, VisitMut};
 use syn::{parse_quote, Token};
@@ -172,7 +171,6 @@ struct LifetimeCollector {
     lifetimes: HashSet<Lifetime>,
     subst_mode: LifetimeSubstMode,
     bound_lifetimes: HashSet<Lifetime>,
-    placeholder_lifetime_at: Option<Span>,
     errors: ErrorRecord,
 }
 
@@ -182,7 +180,6 @@ impl LifetimeCollector {
             lifetimes: HashSet::new(),
             subst_mode,
             bound_lifetimes: HashSet::new(),
-            placeholder_lifetime_at: None,
             errors: Default::default(),
         }
     }
@@ -209,53 +206,22 @@ impl LifetimeCollector {
     fn subst_placeholder_lifetime(&mut self, placeholder: &mut Lifetime) {
         use LifetimeSubstMode as Mode;
 
-        if let Mode::Disabled = self.subst_mode {
-            return;
-        }
-        if !self.bound_lifetimes.is_empty() {
-            self.errors.add_error(Error::new_spanned(
-                placeholder,
-                "can't determine the lifetime this placeholder refers to \
-                in presence of bound lifetime parameters",
-            ));
-            return;
-        }
-        let (lifetime, injected) = if let Some(lifetime) = self.lifetimes.iter().next() {
-            (lifetime, false)
-        } else {
-            match &self.subst_mode {
-                Mode::Input => {
-                    self.errors.add_error(Error::new_spanned(
-                        placeholder,
-                        "can't determine the lifetime this placeholder refers to",
-                    ));
-                    return;
-                }
-                Mode::Output(lifetime) => (lifetime, true),
-                Mode::Fail => {
-                    self.errors.add_error(Error::new_spanned(
-                        placeholder,
-                        "lifetime needs to be disambiguated",
-                    ));
-                    return;
-                }
-                Mode::Disabled => unreachable!(),
+        let lifetime = match &self.subst_mode {
+            Mode::Disabled => return,
+            Mode::Output(lifetime) => lifetime,
+            Mode::Input | Mode::Fail => {
+                self.errors.add_error(Error::new_spanned(
+                    placeholder,
+                    "lifetime needs to be disambiguated",
+                ));
+                return;
             }
         };
         placeholder.ident = lifetime.ident.clone();
-        if injected {
-            self.collect_lifetime(&placeholder);
-        }
-        self.placeholder_lifetime_at = Some(placeholder.span());
+        self.collect_lifetime(&placeholder);
     }
 
-    fn validate(mut self) -> syn::Result<HashSet<Lifetime>> {
-        if let Some(span) = self.placeholder_lifetime_at {
-            if self.lifetimes.len() > 1 {
-                self.errors
-                    .add_error(Error::new(span, "lifetime needs to be disambiguated"));
-            }
-        }
+    fn validate(self) -> syn::Result<HashSet<Lifetime>> {
         self.errors.check()?;
         Ok(self.lifetimes)
     }
