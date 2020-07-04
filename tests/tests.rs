@@ -223,18 +223,68 @@ mod cfg_attr {
 mod custom_test_attrs {
     #![deny(dead_code)]
 
+    #[allow(dead_code)]
+    fn custom_sig_with_builtin_types<T>(input: i32) -> String {
+        input.to_string()
+    }
+
+    struct Foo;
+    struct Bar;
+
+    #[allow(dead_code)]
+    fn custom_sig_with_locally_defined_types<T>(_input: Foo) -> Bar {
+        Bar
+    }
+
+    #[test]
+    fn test_attr_works_too_when_listed<T>() {}
+
+    #[instantiate_tests(<()>)]
+    mod inst {}
+}
+
+#[generic_tests::define(attrs(allow))]
+mod lifetimes_in_signature {
+    #![deny(dead_code)]
+
     struct Borrowed<'a> {
         #[allow(dead_code)]
         a: &'a str,
     }
 
     #[allow(dead_code)]
-    fn kinky_sig<T>(a: &str) -> Borrowed<'_> {
+    fn elided_in_input<T>(_s: &str) {}
+
+    #[allow(dead_code)]
+    fn explicit_in_input<'a, T>(_s: &'a str) {}
+
+    #[allow(dead_code)]
+    fn elided_and_explicit_type_param_in_input<'b, T>(_s: &str, _b: Borrowed<'b>) {}
+
+    #[allow(dead_code)]
+    fn two_args_sharing_a_lifetime<'b, T>(s: &'b str, mut b: Borrowed<'b>) {
+        b.a = s;
+    }
+
+    #[allow(dead_code)]
+    fn explicit_in_input_placeholder_in_output<'a, T>(a: &'a str) -> Borrowed<'_> {
         Borrowed { a }
     }
 
-    #[test]
-    fn test_attr_works_too_when_listed<T>() {}
+    #[allow(dead_code)]
+    fn elided_in_input_placeholder_in_output<T>(a: &str) -> Borrowed<'_> {
+        Borrowed { a }
+    }
+
+    #[allow(dead_code)]
+    fn one_explicit_other_elided<'a, T>(a: &'a str, _b: &str) -> Borrowed<'a> {
+        Borrowed { a }
+    }
+
+    #[allow(dead_code)]
+    fn two_explicit<'a, 'b, T>(_a: &'a str, b: &'b str) -> Borrowed<'b> {
+        Borrowed { a: b }
+    }
 
     #[instantiate_tests(<()>)]
     mod inst {}
