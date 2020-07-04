@@ -104,7 +104,7 @@ impl TestInputSignature {
                     )),
                     _ => Err(Error::new_spanned(
                         type_pat,
-                        "unsupported argument pattern in test function input",
+                        "unsupported argument pattern in generic test function input",
                     )),
                 },
                 FnArg::Receiver(_) => Err(Error::new_spanned(
