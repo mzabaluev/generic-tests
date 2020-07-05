@@ -11,15 +11,15 @@ pub struct MacroOpts {
     copy_set: HashSet<Path>,
 }
 
+fn attr_names_to_set(names: &[&str]) -> HashSet<Path> {
+    names
+        .iter()
+        .map(|&name| Ident::new(name, Span::call_site()).into())
+        .collect()
+}
+
 impl Default for MacroOpts {
     fn default() -> Self {
-        fn attr_names_to_set(names: &[&str]) -> HashSet<Path> {
-            names
-                .iter()
-                .map(|&name| Ident::new(name, Span::call_site()).into())
-                .collect()
-        }
-
         let inst_set = attr_names_to_set(DEFAULT_TEST_ATTRS);
         let copy_set = attr_names_to_set(DEFAULT_COPIED_ATTRS);
         MacroOpts { inst_set, copy_set }
@@ -31,15 +31,15 @@ impl MacroOpts {
         if args.is_empty() {
             return Ok(MacroOpts::default());
         }
-        let mut inst_set = HashSet::new();
-        let mut copy_set = HashSet::new();
+        let mut custom_inst_set = None;
+        let mut custom_copy_set = None;
         for nested_meta in args {
             match nested_meta {
                 NestedMeta::Meta(Meta::List(list)) => {
                     if list.path.is_ident("attrs") {
-                        populate_from_attrs_list(list, &mut inst_set)?;
+                        populate_from_attrs_list(list, &mut custom_inst_set)?;
                     } else if list.path.is_ident("copy_attrs") {
-                        populate_from_attrs_list(list, &mut copy_set)?;
+                        populate_from_attrs_list(list, &mut custom_copy_set)?;
                     } else {
                         return Err(Error::new_spanned(list, "unexpected attribute input"));
                     }
@@ -52,6 +52,8 @@ impl MacroOpts {
                 }
             }
         }
+        let inst_set = custom_inst_set.unwrap_or_else(|| attr_names_to_set(DEFAULT_TEST_ATTRS));
+        let copy_set = custom_copy_set.unwrap_or_else(|| attr_names_to_set(DEFAULT_COPIED_ATTRS));
         Ok(MacroOpts { inst_set, copy_set })
     }
 
@@ -64,7 +66,14 @@ impl MacroOpts {
     }
 }
 
-fn populate_from_attrs_list(list: MetaList, set: &mut HashSet<Path>) -> syn::Result<()> {
+fn populate_from_attrs_list(
+    list: MetaList,
+    customized_set: &mut Option<HashSet<Path>>,
+) -> syn::Result<()> {
+    if customized_set.is_none() {
+        *customized_set = Some(HashSet::new());
+    }
+    let set = customized_set.as_mut().unwrap();
     for nested_meta in list.nested {
         match nested_meta {
             NestedMeta::Meta(Meta::Path(path)) => {

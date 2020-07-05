@@ -40,21 +40,19 @@ impl Tests {
         let mut test_sigs = test_sigs.into_iter();
         for item in items.iter_mut() {
             if let Item::Fn(item) = item {
-                let test_attrs = extract_test_attrs(opts, item);
-                if test_attrs.is_empty() {
-                    continue;
+                if let Some(test_attrs) = extract_test_attrs(opts, item) {
+                    let sig = test_sigs
+                        .next()
+                        .expect("there are fewer collected signatures than test functions");
+                    tests.test_fns.push(TestFn {
+                        test_attrs,
+                        asyncness: item.sig.asyncness,
+                        unsafety: item.sig.unsafety,
+                        ident: item.sig.ident.clone(),
+                        output: item.sig.output.clone(),
+                        sig,
+                    });
                 }
-                let sig = test_sigs
-                    .next()
-                    .expect("there are fewer collected signatures than test functions");
-                tests.test_fns.push(TestFn {
-                    test_attrs,
-                    asyncness: item.sig.asyncness,
-                    unsafety: item.sig.unsafety,
-                    ident: item.sig.ident.clone(),
-                    output: item.sig.output.clone(),
-                    sig,
-                });
             }
         }
         debug_assert_eq!(
@@ -106,7 +104,7 @@ fn is_test_fn(opts: &MacroOpts, item: &ItemFn) -> bool {
     item.attrs.iter().any(|attr| opts.is_test_attr(attr))
 }
 
-fn extract_test_attrs(opts: &MacroOpts, item: &mut ItemFn) -> Vec<Attribute> {
+fn extract_test_attrs(opts: &MacroOpts, item: &mut ItemFn) -> Option<Vec<Attribute>> {
     let mut test_attrs = Vec::new();
     let mut pos = 0;
     while pos < item.attrs.len() {
@@ -117,14 +115,16 @@ fn extract_test_attrs(opts: &MacroOpts, item: &mut ItemFn) -> Vec<Attribute> {
         }
         pos += 1;
     }
-    if !test_attrs.is_empty() {
+    if test_attrs.is_empty() {
+        None
+    } else {
         for attr in &item.attrs {
             if opts.is_copied_attr(&attr) {
                 test_attrs.push(attr.clone());
             }
         }
+        Some(test_attrs)
     }
-    test_attrs
 }
 
 fn generic_arity(generics: &Generics) -> usize {
