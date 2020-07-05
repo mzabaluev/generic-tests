@@ -220,8 +220,8 @@ mod cfg_attr {
 // "test" function calls the generic one and itself sports the `allow` attribute
 // disabling the lint.
 #[generic_tests::define(attrs(allow, test))]
+#[deny(dead_code)]
 mod custom_test_attrs {
-    #![deny(dead_code)]
 
     #[allow(dead_code)]
     fn custom_sig_with_builtin_types<T>(input: i32) -> String {
@@ -244,8 +244,8 @@ mod custom_test_attrs {
 }
 
 #[generic_tests::define(attrs(allow))]
+#[deny(dead_code)]
 mod lifetimes_in_signature {
-    #![deny(dead_code)]
 
     struct Borrowed<'a> {
         #[allow(dead_code)]
