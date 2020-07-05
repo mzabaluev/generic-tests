@@ -341,17 +341,3 @@ mod mut_in_signature {
     #[instantiate_tests(<()>)]
     mod inst {}
 }
-
-#[cfg(feature = "test-tokio")]
-#[generic_tests::define(attrs(tokio::test))]
-mod async_tests {
-    use std::io;
-
-    #[tokio::test]
-    async fn async_works<T>() -> io::Result<()> {
-        Ok(())
-    }
-
-    #[instantiate_tests(<()>)]
-    mod inst {}
-}
