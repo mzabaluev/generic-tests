@@ -8,7 +8,7 @@ use syn::{parse_quote, Token};
 use syn::{
     Attribute, BoundLifetimes, ConstParam, Error, FnArg, GenericParam, Generics, Ident, ItemFn,
     Lifetime, ParenthesizedGenericArguments, Pat, PatIdent, Path, PathSegment, ReturnType,
-    Signature, TraitBound, Type, TypeBareFn, TypeParam, TypeReference, WherePredicate,
+    Signature, TraitBound, Type, TypeBareFn, TypeParam, TypePath, TypeReference, WherePredicate,
 };
 
 use std::collections::HashSet;
@@ -413,15 +413,33 @@ impl GenericParamCatcher {
 
 impl<'ast> Visit<'ast> for GenericParamCatcher {
     fn visit_path(&mut self, path: &'ast Path) {
+        const ERROR_MSG: &str =
+            "use of generic parameters in test function signatures is not supported";
+
         if let Some(ident) = path.get_ident() {
             if self.generic_params.contains(ident) {
-                self.errors.add_error(Error::new_spanned(
-                    ident,
-                    "use of generic parameters in test function signatures is not supported",
-                ));
+                self.errors.add_error(Error::new_spanned(ident, ERROR_MSG));
             }
-        } else {
-            visit::visit_path(self, path)
+            return;
+        }
+        if path.leading_colon.is_none() && path.segments.len() == 2 {
+            use syn::PathArguments::*;
+            if let (None, None) = (&path.segments[0].arguments, &path.segments[1].arguments) {
+                let suspected_param = &path.segments[0].ident;
+                if self.generic_params.contains(suspected_param) {
+                    self.errors
+                        .add_error(Error::new_spanned(suspected_param, ERROR_MSG));
+                }
+                return;
+            }
+        }
+        visit::visit_path(self, path)
+    }
+
+    fn visit_type_path(&mut self, type_path: &'ast TypePath) {
+        match &type_path.qself {
+            None => self.visit_path(&type_path.path),
+            Some(qself) => self.visit_qself(qself),
         }
     }
 }
