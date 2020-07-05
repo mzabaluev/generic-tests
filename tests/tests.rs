@@ -301,6 +301,11 @@ mod lifetimes_in_signature {
     }
 
     #[allow(dead_code)]
+    fn two_args_sharing_a_lifetime_one_also_elides<'b, T>(s: &'b str, b: &mut Borrowed<'b>) {
+        b.a = s;
+    }
+
+    #[allow(dead_code)]
     fn explicit_in_input_placeholder_in_output<'a, T>(a: &'a str) -> Borrowed<'_> {
         Borrowed { a }
     }
