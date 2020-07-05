@@ -200,12 +200,11 @@ mod cfg_attr {
         panic!("unexpectedly enabled")
     }
 
+    // This should not be instantiated. If it is, it will trigger
+    // the dead_code lint in the instantiation module.
     #[allow(dead_code)]
     #[cfg(test)]
-    fn not_a_test_case<T>() {
-        // This should not be instantiated. If it is, it will trigger
-        // the dead_code lint in the instantiation module.
-    }
+    fn not_a_test_case<T>() {}
 
     #[deny(dead_code)]
     #[instantiate_tests(<()>)]
@@ -219,7 +218,7 @@ mod cfg_attr {
 // does not trigger the dead code lint, though, because the instantiated
 // "test" function calls the generic one and itself sports the `allow` attribute
 // disabling the lint.
-#[generic_tests::define(attrs(allow, test))]
+#[generic_tests::define(attrs(allow, test, should_panic))]
 #[deny(dead_code)]
 mod custom_test_attrs {
 
@@ -239,7 +238,42 @@ mod custom_test_attrs {
     #[test]
     fn test_attr_works_too_when_listed<T>() {}
 
+    #[test]
+    #[should_panic]
+    fn two_test_attrs_listed<T>() {
+        panic!("panicking as it should");
+    }
+
     #[instantiate_tests(<()>)]
+    mod inst {}
+}
+
+#[generic_tests::define(copy_attrs(doc, cfg_attr))]
+mod custom_copy_attrs {
+
+    /// This illustrates how doc comments can be copied
+    /// onto the instantiated tests.
+    #[test]
+    fn copy_doc_attrs<T>() {}
+
+    /// This should not be instantiated. If it is, it will trigger
+    /// the dead_code lint in the instantiation module.
+    #[allow(dead_code)]
+    fn not_a_test_case_but_has_doc<T>() {}
+
+    #[cfg_attr(test, doc("This should not be instantiated"))]
+    #[allow(dead_code)]
+    fn not_a_test_case_but_has_cfg_attr<T>() {}
+
+    #[test]
+    #[cfg_attr(test, should_panic)]
+    #[allow(unused_attributes)]
+    fn custom_attr_gets_copied_to_instantiation<T>() {
+        panic!("panicking as it should");
+    }
+
+    #[instantiate_tests(<()>)]
+    #[deny(dead_code)]
     mod inst {}
 }
 
