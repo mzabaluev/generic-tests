@@ -69,9 +69,8 @@ fn shim_mod(test: &TestFn, inst_args: &InstArguments, root_path: &Path) -> Item 
 
             pub(super) #asyncness unsafe fn shim<#(#lifetimes),*>(
                 _args: _generic_tests_call_sig::#args_path,
-                ret: *mut _generic_tests_call_sig::#ret_path,
-            ) {
-                *ret = #call
+            ) -> _generic_tests_call_sig::#ret_path {
+                #call
             }
         }
     }
@@ -137,7 +136,7 @@ impl Instantiator {
             let call = wrap_async(
                 asyncness,
                 parse_quote! {
-                    shim::shim(args, ret.as_mut_ptr())
+                    shim::shim(args)
                 },
             );
             content.push(parse_quote! {
@@ -146,11 +145,7 @@ impl Instantiator {
                     #mod_shim
 
                     let args = shim::_generic_tests_call_sig::Args { #(#args_field_init),* };
-                    let mut ret = ::core::mem::MaybeUninit::uninit();
-                    unsafe {
-                        #call;
-                        ret.assume_init()
-                    }
+                    unsafe { #call }
                 }
             });
         }
