@@ -1,10 +1,10 @@
+use crate::error::ErrorRecord;
 use crate::options::MacroOpts;
 use crate::signature::TestFnSignature;
 
 use proc_macro2::TokenStream;
 use quote::ToTokens;
 use syn::punctuated::Punctuated;
-use syn::spanned::Spanned;
 use syn::Token;
 use syn::{
     AngleBracketedGenericArguments, AttrStyle, Attribute, Error, GenericArgument, GenericParam,
@@ -30,20 +30,51 @@ impl Tests {
         opts: &MacroOpts,
         ast: &'ast mut ItemMod,
     ) -> syn::Result<(Self, &'ast mut Vec<Item>)> {
-        let span = ast.span();
-        let items = match ast.content.as_mut() {
-            Some(content) => &mut content.1,
-            None => return Err(Error::new(span, "only inline modules are supported")),
-        };
+        if ast.content.is_none() {
+            return Err(Error::new_spanned(ast, "only inline modules are supported"));
+        }
+        let items = &mut ast.content.as_mut().unwrap().1;
+        let (tests, errors) = Self::extract_recording_errors(opts, items);
+        errors.check()?;
+        Ok((tests, items))
+    }
+
+    fn extract_recording_errors<'ast>(
+        opts: &MacroOpts,
+        items: &'ast mut Vec<Item>,
+    ) -> (Self, ErrorRecord) {
+        let mut errors = ErrorRecord::default();
         let mut tests = Tests::default();
-        let test_sigs = tests.build_signatures(opts, items)?;
-        let mut test_sigs = test_sigs.into_iter();
+        let mut mod_wide_generic_arity = None;
         for item in items.iter_mut() {
             if let Item::Fn(item) = item {
                 if let Some(test_attrs) = extract_test_attrs(opts, item) {
-                    let sig = test_sigs
-                        .next()
-                        .expect("there are fewer collected signatures than test functions");
+                    let sig = match TestFnSignature::try_build(item) {
+                        Ok(sig) => sig,
+                        Err(e) => {
+                            errors.add_error(e);
+                            continue;
+                        }
+                    };
+                    let fn_generic_arity = generic_arity(&item.sig.generics);
+                    match mod_wide_generic_arity {
+                        None => {
+                            mod_wide_generic_arity = Some(fn_generic_arity);
+                        }
+                        Some(n) => {
+                            if fn_generic_arity != n {
+                                errors.add_error(Error::new_spanned(
+                                    &item.sig.generics,
+                                    format!(
+                                        "test function `{}` has {} generic parameters \
+                                        while others in the same module have {}",
+                                        item.sig.ident, fn_generic_arity, n
+                                    ),
+                                ));
+                                continue;
+                            }
+                        }
+                    }
                     tests.test_fns.push(TestFn {
                         test_attrs,
                         asyncness: item.sig.asyncness,
@@ -55,53 +86,8 @@ impl Tests {
                 }
             }
         }
-        debug_assert_eq!(
-            test_sigs.len(),
-            0,
-            "there are more collected signatures than test functions"
-        );
-        Ok((tests, items))
+        (tests, errors)
     }
-
-    fn build_signatures(
-        &mut self,
-        opts: &MacroOpts,
-        items: &[Item],
-    ) -> syn::Result<Vec<TestFnSignature>> {
-        let mut sigs = Vec::new();
-        let mut mod_wide_generic_arity = None;
-        for item in items {
-            if let Item::Fn(item) = item {
-                if is_test_fn(opts, item) {
-                    let sig = TestFnSignature::try_build(item)?;
-                    let fn_generic_arity = generic_arity(&item.sig.generics);
-                    match mod_wide_generic_arity {
-                        None => {
-                            mod_wide_generic_arity = Some(fn_generic_arity);
-                        }
-                        Some(n) => {
-                            if fn_generic_arity != n {
-                                return Err(Error::new_spanned(
-                                    item,
-                                    format!(
-                                        "test function `{}` has {} generic parameters \
-                                        while others in the same module have {}",
-                                        item.sig.ident, fn_generic_arity, n
-                                    ),
-                                ));
-                            }
-                        }
-                    }
-                    sigs.push(sig);
-                }
-            }
-        }
-        Ok(sigs)
-    }
-}
-
-fn is_test_fn(opts: &MacroOpts, item: &ItemFn) -> bool {
-    item.attrs.iter().any(|attr| opts.is_test_attr(attr))
 }
 
 fn extract_test_attrs(opts: &MacroOpts, item: &mut ItemFn) -> Option<Vec<Attribute>> {
