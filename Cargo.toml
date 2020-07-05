@@ -15,9 +15,12 @@ proc-macro = true
 path = "src/macro.rs"
 
 [features]
-test-compile-fail = []
+test-tokio = ["tokio/macros", "tokio/rt-threaded"]
 
 [dependencies]
 syn = { version = "1.0", features = ["full", "visit", "visit-mut", "extra-traits"] }
 proc-macro2 = "1.0"
 quote = "1.0"
+
+[dev-dependencies]
+tokio = "0.2"
