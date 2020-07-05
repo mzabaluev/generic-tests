@@ -103,7 +103,7 @@ fn wrap_async(asyncness: Option<Token![async]>, expr: Expr) -> Expr {
     if asyncness.is_none() {
         expr
     } else {
-        parse_quote! { expr.await }
+        parse_quote! { #expr.await }
     }
 }
 
