@@ -28,6 +28,8 @@ impl Default for MacroOpts {
 
 impl MacroOpts {
     pub fn from_args(args: AttributeArgs) -> syn::Result<Self> {
+        const ERROR_MSG: &str = "unexpected attribute input; \
+                                use `attrs()`, `copy_attrs()`";
         if args.is_empty() {
             return Ok(MacroOpts::default());
         }
@@ -41,15 +43,10 @@ impl MacroOpts {
                     } else if list.path.is_ident("copy_attrs") {
                         populate_from_attrs_list(list, &mut custom_copy_set)?;
                     } else {
-                        return Err(Error::new_spanned(list, "unexpected attribute input"));
+                        return Err(Error::new_spanned(list, ERROR_MSG));
                     }
                 }
-                _ => {
-                    return Err(Error::new_spanned(
-                        nested_meta,
-                        "unexpected attribute input",
-                    ))
-                }
+                _ => return Err(Error::new_spanned(nested_meta, ERROR_MSG)),
             }
         }
         let inst_set = custom_inst_set.unwrap_or_else(|| attr_names_to_set(DEFAULT_TEST_ATTRS));
