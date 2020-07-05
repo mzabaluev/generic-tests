@@ -323,3 +323,16 @@ mod lifetimes_in_signature {
     #[instantiate_tests(<()>)]
     mod inst {}
 }
+
+#[generic_tests::define(attrs(allow))]
+mod mut_in_signature {
+    #[allow(dead_code)]
+    fn mut_is_erased_in_instantiation<T>(mut a: i32) {
+        a += 1;
+        let _ = a;
+    }
+
+    #[deny(unused_mut)]
+    #[instantiate_tests(<()>)]
+    mod inst {}
+}
