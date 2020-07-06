@@ -277,6 +277,67 @@ mod custom_copy_attrs {
     mod inst {}
 }
 
+mod fn_level_attr {
+    #![deny(dead_code)]
+    #![deny(unused_attributes)]
+
+    #[generic_tests::define]
+    mod macro_level_defaults {
+
+        #[generic_test(attrs(test, cfg_attr))]
+        #[test]
+        #[cfg_attr(test, should_panic)]
+        fn custom_inst_attrs<T>() {
+            panic!("panicking as it should");
+        }
+
+        #[generic_test(copy_attrs(cfg_attr))]
+        #[test]
+        #[cfg_attr(test, should_panic)]
+        #[allow(unused_attributes)]
+        fn custom_copy_attrs<T>() {
+            panic!("panicking as it should");
+        }
+
+        #[generic_test(copy_attrs())]
+        #[test]
+        #[cfg(feature = "no-such-feature")]
+        fn copy_attrs_overrides_default<T>() {}
+
+        #[cfg(test)]
+        fn copy_attrs_overrides_default<T>() {}
+
+        #[instantiate_tests(<()>)]
+        mod inst {}
+    }
+
+    #[generic_tests::define(attrs(allow), copy_attrs(cfg_attr))]
+    mod macro_level_custom {
+
+        #[generic_test(attrs(test))]
+        #[test]
+        fn custom_inst_attrs<T>() {}
+
+        #[generic_test(attrs(test))]
+        #[test]
+        #[cfg_attr(test, should_panic)]
+        #[allow(unused_attributes)]
+        fn custom_inst_attrs_mod_level_copy_attrs<T>() {
+            panic!("panicking as it should");
+        }
+
+        #[generic_test(copy_attrs(cfg))]
+        #[allow()]
+        #[cfg(feature = "no-such-feature")]
+        fn custom_copy_attrs<T>() {
+            panic!("should be disabled");
+        }
+
+        #[instantiate_tests(<()>)]
+        mod inst {}
+    }
+}
+
 #[generic_tests::define(attrs(allow))]
 #[deny(dead_code)]
 mod lifetimes_in_signature {
