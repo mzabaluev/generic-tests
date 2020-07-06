@@ -1,5 +1,5 @@
 use crate::error::ErrorRecord;
-use crate::options::MacroOpts;
+use crate::options::{self, MacroOpts, TestFnOpts};
 use crate::signature::TestFnSignature;
 
 use proc_macro2::TokenStream;
@@ -48,41 +48,34 @@ impl Tests {
         let mut mod_wide_generic_arity = None;
         for item in items.iter_mut() {
             if let Item::Fn(item) = item {
-                if let Some(test_attrs) = extract_test_attrs(opts, item) {
-                    let sig = match TestFnSignature::try_build(item) {
-                        Ok(sig) => sig,
-                        Err(e) => {
-                            errors.add_error(e);
-                            continue;
-                        }
-                    };
-                    let fn_generic_arity = generic_arity(&item.sig.generics);
-                    match mod_wide_generic_arity {
-                        None => {
-                            mod_wide_generic_arity = Some(fn_generic_arity);
-                        }
-                        Some(n) => {
-                            if fn_generic_arity != n {
-                                errors.add_error(Error::new_spanned(
-                                    &item.sig.generics,
-                                    format!(
-                                        "test function `{}` has {} generic parameters \
-                                        while others in the same module have {}",
-                                        item.sig.ident, fn_generic_arity, n
-                                    ),
-                                ));
-                                continue;
+                match TestFn::try_extract(opts, item) {
+                    Ok(None) => {}
+                    Ok(Some(test_fn)) => {
+                        let fn_generic_arity = generic_arity(&item.sig.generics);
+                        match mod_wide_generic_arity {
+                            None => {
+                                mod_wide_generic_arity = Some(fn_generic_arity);
+                            }
+                            Some(n) => {
+                                if fn_generic_arity != n {
+                                    errors.add_error(Error::new_spanned(
+                                        &item.sig.generics,
+                                        format!(
+                                            "test function `{}` has {} generic parameters \
+                                            while others in the same module have {}",
+                                            item.sig.ident, fn_generic_arity, n
+                                        ),
+                                    ));
+                                    continue;
+                                }
                             }
                         }
+                        tests.test_fns.push(test_fn);
                     }
-                    tests.test_fns.push(TestFn {
-                        test_attrs,
-                        asyncness: item.sig.asyncness,
-                        unsafety: item.sig.unsafety,
-                        ident: item.sig.ident.clone(),
-                        output: item.sig.output.clone(),
-                        sig,
-                    });
+                    Err(e) => {
+                        errors.add_error(e);
+                        continue;
+                    }
                 }
             }
         }
@@ -90,27 +83,55 @@ impl Tests {
     }
 }
 
-fn extract_test_attrs(opts: &MacroOpts, item: &mut ItemFn) -> Option<Vec<Attribute>> {
+impl TestFn {
+    fn try_extract<'ast>(opts: &MacroOpts, item: &'ast mut ItemFn) -> syn::Result<Option<Self>> {
+        let test_attrs = extract_test_attrs(opts, item)?;
+        if test_attrs.is_empty() {
+            return Ok(None);
+        }
+        let sig = TestFnSignature::try_build(item)?;
+        Ok(Some(TestFn {
+            test_attrs,
+            asyncness: item.sig.asyncness,
+            unsafety: item.sig.unsafety,
+            ident: item.sig.ident.clone(),
+            output: item.sig.output.clone(),
+            sig,
+        }))
+    }
+}
+
+fn extract_test_attrs(opts: &MacroOpts, item: &mut ItemFn) -> syn::Result<Vec<Attribute>> {
+    let mut fn_opts = TestFnOpts::default();
+    let mut pos = 0;
+    while pos < item.attrs.len() {
+        let attr = &item.attrs[pos];
+        if attr.path.is_ident("generic_test") {
+            let attr = item.attrs.remove(pos);
+            let meta = attr.parse_meta()?;
+            fn_opts.apply_attr(meta)?;
+            continue;
+        }
+        pos += 1;
+    }
     let mut test_attrs = Vec::new();
     let mut pos = 0;
     while pos < item.attrs.len() {
         let attr = &item.attrs[pos];
-        if opts.is_test_attr(&attr) {
+        if options::is_test_attr(&attr, &opts, &fn_opts) {
             test_attrs.push(item.attrs.remove(pos));
             continue;
         }
         pos += 1;
     }
-    if test_attrs.is_empty() {
-        None
-    } else {
+    if !test_attrs.is_empty() {
         for attr in &item.attrs {
-            if opts.is_copied_attr(&attr) {
+            if options::is_copied_attr(&attr, &opts, &fn_opts) {
                 test_attrs.push(attr.clone());
             }
         }
-        Some(test_attrs)
     }
+    Ok(test_attrs)
 }
 
 fn generic_arity(generics: &Generics) -> usize {

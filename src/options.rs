@@ -7,8 +7,30 @@ const DEFAULT_TEST_ATTRS: &[&str] = &["test", "ignore", "should_panic", "bench"]
 const DEFAULT_COPIED_ATTRS: &[&str] = &["cfg"];
 
 pub struct MacroOpts {
-    inst_set: HashSet<Path>,
-    copy_set: HashSet<Path>,
+    inst_attrs: HashSet<Path>,
+    copy_attrs: HashSet<Path>,
+}
+
+#[derive(Default)]
+pub struct TestFnOpts {
+    inst_attrs: Option<HashSet<Path>>,
+    copy_attrs: Option<HashSet<Path>>,
+}
+
+pub fn is_test_attr(attr: &Attribute, macro_opts: &MacroOpts, fn_opts: &TestFnOpts) -> bool {
+    if let Some(attrs) = &fn_opts.inst_attrs {
+        attrs.contains(&attr.path)
+    } else {
+        macro_opts.inst_attrs.contains(&attr.path)
+    }
+}
+
+pub fn is_copied_attr(attr: &Attribute, macro_opts: &MacroOpts, fn_opts: &TestFnOpts) -> bool {
+    if let Some(attrs) = &fn_opts.copy_attrs {
+        attrs.contains(&attr.path)
+    } else {
+        macro_opts.copy_attrs.contains(&attr.path)
+    }
 }
 
 fn attr_names_to_set(names: &[&str]) -> HashSet<Path> {
@@ -20,9 +42,10 @@ fn attr_names_to_set(names: &[&str]) -> HashSet<Path> {
 
 impl Default for MacroOpts {
     fn default() -> Self {
-        let inst_set = attr_names_to_set(DEFAULT_TEST_ATTRS);
-        let copy_set = attr_names_to_set(DEFAULT_COPIED_ATTRS);
-        MacroOpts { inst_set, copy_set }
+        MacroOpts {
+            inst_attrs: attr_names_to_set(DEFAULT_TEST_ATTRS),
+            copy_attrs: attr_names_to_set(DEFAULT_COPIED_ATTRS),
+        }
     }
 }
 
@@ -33,15 +56,15 @@ impl MacroOpts {
         if args.is_empty() {
             return Ok(MacroOpts::default());
         }
-        let mut custom_inst_set = None;
-        let mut custom_copy_set = None;
+        let mut inst_attrs = None;
+        let mut copy_attrs = None;
         for nested_meta in args {
             match nested_meta {
                 NestedMeta::Meta(Meta::List(list)) => {
                     if list.path.is_ident("attrs") {
-                        populate_from_attrs_list(list, &mut custom_inst_set)?;
+                        populate_from_attrs_list(list, &mut inst_attrs)?;
                     } else if list.path.is_ident("copy_attrs") {
-                        populate_from_attrs_list(list, &mut custom_copy_set)?;
+                        populate_from_attrs_list(list, &mut copy_attrs)?;
                     } else {
                         return Err(Error::new_spanned(list, ERROR_MSG));
                     }
@@ -49,17 +72,44 @@ impl MacroOpts {
                 _ => return Err(Error::new_spanned(nested_meta, ERROR_MSG)),
             }
         }
-        let inst_set = custom_inst_set.unwrap_or_else(|| attr_names_to_set(DEFAULT_TEST_ATTRS));
-        let copy_set = custom_copy_set.unwrap_or_else(|| attr_names_to_set(DEFAULT_COPIED_ATTRS));
-        Ok(MacroOpts { inst_set, copy_set })
+        Ok(MacroOpts {
+            inst_attrs: inst_attrs.unwrap_or_else(|| attr_names_to_set(DEFAULT_TEST_ATTRS)),
+            copy_attrs: copy_attrs.unwrap_or_else(|| attr_names_to_set(DEFAULT_COPIED_ATTRS)),
+        })
     }
+}
 
-    pub fn is_test_attr(&self, attr: &Attribute) -> bool {
-        self.inst_set.contains(&attr.path)
-    }
+impl TestFnOpts {
+    pub fn apply_attr(&mut self, attr_meta: Meta) -> syn::Result<()> {
+        const ERROR_MSG: &str = "unexpected attribute input; \
+                use `attrs()`, `copy_attrs()`";
 
-    pub fn is_copied_attr(&self, attr: &Attribute) -> bool {
-        self.copy_set.contains(&attr.path)
+        let args = match attr_meta {
+            Meta::Path(path) => {
+                return Err(Error::new_spanned(
+                    path,
+                    "attribute must have arguments; use `attrs()`, `copy_attrs()`",
+                ))
+            }
+            Meta::List(list) => list.nested,
+            Meta::NameValue(nv) => return Err(Error::new_spanned(nv, ERROR_MSG)),
+        };
+
+        for nested_meta in args {
+            match nested_meta {
+                NestedMeta::Meta(Meta::List(list)) => {
+                    if list.path.is_ident("attrs") {
+                        populate_from_attrs_list(list, &mut self.inst_attrs)?;
+                    } else if list.path.is_ident("copy_attrs") {
+                        populate_from_attrs_list(list, &mut self.copy_attrs)?;
+                    } else {
+                        return Err(Error::new_spanned(list, ERROR_MSG));
+                    }
+                }
+                _ => return Err(Error::new_spanned(nested_meta, ERROR_MSG)),
+            }
+        }
+        Ok(())
     }
 }
 
