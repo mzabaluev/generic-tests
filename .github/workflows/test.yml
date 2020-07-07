@@ -54,11 +54,7 @@ jobs:
     needs: update-deps
     strategy:
       matrix:
-        config:
-          - toolchain: stable
-            features: --all-features
-          - toolchain: nightly
-            features:
+        toolchain: [stable, nightly]
     runs-on: ubuntu-latest
     env:
       CARGO_INCREMENTAL: 0
@@ -74,7 +70,7 @@ jobs:
         uses: actions-rs/toolchain@v1
         with:
           profile: minimal
-          toolchain: ${{ matrix.config.toolchain }}
+          toolchain: ${{ matrix.toolchain }}
           override: true
 
       - name: Restore cargo registry index
@@ -93,13 +89,13 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: ${{ matrix.config.features }} --lib --tests --locked
+          args: --all-features --lib --tests --locked
 
       - name: Test
         uses: actions-rs/cargo@v1
         with:
           command: test
-          args: ${{ matrix.config.features }} --locked
+          args: --all-features --locked
 
   test-release-and-bench:
     name: Test and Benchmark (nightly, --release)
