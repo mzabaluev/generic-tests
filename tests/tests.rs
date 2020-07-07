@@ -1,3 +1,5 @@
+#![warn(clippy::all)]
+
 #[generic_tests::define]
 mod simple {
     use std::borrow::Cow;
@@ -340,6 +342,7 @@ mod fn_level_attr {
 
 #[generic_tests::define(attrs(allow))]
 #[deny(dead_code)]
+#[allow(clippy::needless_lifetimes)]
 mod lifetimes_in_signature {
 
     struct Borrowed<'a> {

@@ -1,6 +1,7 @@
 #![allow(incomplete_features)]
 #![feature(const_generics)]
 #![feature(test)]
+#![warn(clippy::all)]
 
 extern crate test;
 

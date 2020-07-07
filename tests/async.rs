@@ -1,4 +1,5 @@
 #![cfg(feature = "test-tokio")]
+#![warn(clippy::all)]
 
 #[generic_tests::define(attrs(tokio::test))]
 mod async_tests {
