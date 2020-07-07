@@ -1,4 +1,5 @@
 #![cfg(feature = "test-tokio")]
+#![deny(unused)]
 #![warn(clippy::all)]
 
 #[generic_tests::define(attrs(tokio::test))]

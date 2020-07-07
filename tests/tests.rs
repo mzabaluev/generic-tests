@@ -1,3 +1,4 @@
+#![deny(unused)]
 #![warn(clippy::all)]
 
 #[generic_tests::define]
@@ -280,8 +281,6 @@ mod custom_copy_attrs {
 }
 
 mod fn_level_attr {
-    #![deny(dead_code)]
-    #![deny(unused_attributes)]
 
     #[generic_tests::define]
     mod macro_level_defaults {
@@ -341,7 +340,6 @@ mod fn_level_attr {
 }
 
 #[generic_tests::define(attrs(allow))]
-#[deny(dead_code)]
 #[allow(clippy::needless_lifetimes)]
 mod lifetimes_in_signature {
 
