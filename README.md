@@ -7,6 +7,14 @@ is achieved by using generic parameters and trait bounds. The specific test
 cases are expanded in multiple submodules with type arguments provided in
 another attribute.
 
+## Features
+
+* Instantiates tests and benchmarks for the built-in test framework.
+* Supports arbitrary test function attributes provided by other crates.
+* A customizable set of attributes is copied from the generic test function to
+  its instantiations.
+* Supports `async` tests.
+
 ## License
 
 Licensed under either of
