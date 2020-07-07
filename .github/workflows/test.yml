@@ -57,10 +57,8 @@ jobs:
         config:
           - toolchain: stable
             features: --all-features
-            targets: --lib --tests
           - toolchain: nightly
             features:
-            targets: --lib --tests --benches
     runs-on: ubuntu-latest
     env:
       CARGO_INCREMENTAL: 0
@@ -95,7 +93,7 @@ jobs:
         uses: actions-rs/cargo@v1
         with:
           command: build
-          args: ${{ matrix.config.features }} ${{ matrix.config.targets }} --locked
+          args: ${{ matrix.config.features }} --lib --tests --locked
 
       - name: Test
         uses: actions-rs/cargo@v1
@@ -103,8 +101,38 @@ jobs:
           command: test
           args: ${{ matrix.config.features }} --locked
 
-      - if: ${{ matrix.config.toolchain == 'nightly' }}
-        name: Compile and run benchmarks
+  bench:
+    name: Benchmark
+    needs: update-deps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Download Cargo.lock
+        uses: actions/download-artifact@v2
+        with:
+          name: lockfile
+
+      - name: Install Rust toolchain
+        uses: actions-rs/toolchain@v1
+        with:
+          profile: minimal
+          toolchain: nightly
+          override: true
+
+      - name: Restore cargo registry index
+        uses: actions/cache@v2
+        with:
+          path: ~/.cargo/registry/index
+          key: cargo-index-${{ needs.update-deps.outputs.crates-io-index-head }}
+
+      - name: Restore dependency crates
+        uses: actions/cache@v2
+        with:
+          path: ~/.cargo/registry/cache
+          key: cargo-deps-${{ hashFiles('Cargo.lock') }}
+
+      - name: Compile and run benchmarks
         uses: actions-rs/cargo@v1
         with:
           command: bench
