@@ -1,4 +1,8 @@
-on: [push, pull_request]
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: '15 3 * * 6' # Weekly, every Saturday at 3:15 UTC
 
 name: CI
 
