@@ -3,11 +3,12 @@
 //! The `define` macro provided by this crate allows the test writer to
 //! reuse code between test cases or benchmarks that use the same test protocol
 //! with different types under test. As in general programming with Rust, this
-//! is achieved by using generic parameters and trait bounds. The generic
-//! test functions are annotated with the familiar `test` or `bench` attributes,
+//! is achieved by using generic parameters and trait bounds. Generic
+//! test functions in a module processed by the `define` macro are annotated
+//! with attributes consumed by the test framework, such as `test` or `bench`,
 //! however the actual test cases can be instantiated in multiple submodules
 //! annotated with the `instantiate_tests` attribute providing specific
-//! arguments for the tests.
+//! argument types for the tests.
 
 #![warn(clippy::all)]
 #![warn(future_incompatible)]
