@@ -3,13 +3,14 @@
 #[generic_tests::define(attrs(tokio::test))]
 mod async_tests {
     use bytes::{Buf, Bytes};
-    use tokio::io::{self, AsyncWrite, AsyncWriteExt, Error};
+    use tokio::io::Error;
+    use tokio::prelude::*;
 
     use std::pin::Pin;
     use std::task::{Context, Poll};
 
     #[tokio::test]
-    async fn async_works<T>() -> io::Result<()> {
+    async fn async_is_instantiated<T>() -> io::Result<()> {
         Ok(())
     }
 
