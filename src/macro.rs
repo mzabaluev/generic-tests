@@ -28,7 +28,7 @@ use syn::{AttributeArgs, ItemMod};
 ///
 /// This macro is used to annotate a module containing test case definitions.
 /// All functions defined immediately in the module and marked with
-/// the `test` or `bench` attribute must have the same number of generic
+/// a [test attribute][test-attributes] must have the same number of generic
 /// type parameters. Each function's signature must be as required
 /// by the test attribute that the function is marked with; thus, the functions
 /// marked with `test` must have no parameters and their return type must be
@@ -40,13 +40,8 @@ use syn::{AttributeArgs, ItemMod};
 /// signatures, and test attributes mirror the generic test functions at the
 /// macro invocation root module, each calling its generic namesake
 /// parameterized with the arguments given in `instantiate_tests`.
-/// The test attributes of the original generic definitions are erased by
-/// the macro, so the test framework receives only the instantiated test cases.
-/// Additionally, any `cfg` attributes on the generic function items are
-/// copied to the instantiated test case functions, enabling consistent
-/// conditional compilation.
 ///
-/// # Examples
+/// # Basic example
 ///
 /// ```
 /// #[generic_tests::define]
@@ -72,7 +67,104 @@ use syn::{AttributeArgs, ItemMod};
 ///     #[instantiate_tests(<Cow<'static, str>>)]
 ///     mod cow {}
 /// }
+/// # fn main() {}
 /// ```
+///
+/// # Test attributes
+///
+/// [test-attributes]: #test-attributes
+///
+/// The macro checks the paths of function attributes against a customizable
+/// set of attributes that annotate the functions for the test framework.
+/// Only functions with at least one of the attributes found in this set
+/// are selected for instantiation.
+/// These attributes are replicated to the instantiated test case functions and
+/// erased from the original generic definitions. By default, the
+/// `test`, `bench`, `ignore`, and `should_panic` attributes get this
+/// treatment. To recognize other test attributes, their paths can be
+/// listed in the `attrs()` parameter of the `define` attribute. Use of the
+/// `attrs()` parameter overrides the default set.
+///
+/// ```
+/// # #[cfg(feature = "test-tokio")]
+/// #[generic_tests::define(attrs(tokio::test))]
+/// mod async_tests {
+///     use bytes::{Buf, Bytes};
+///     use tokio::prelude::*;
+///
+///     #[tokio::test]
+///     async fn test_write_buf<T: Buf>() -> io::Result<()>
+///     where
+///         T: From<&'static str>,
+///     {
+///         let mut buf = T::from("Hello, world!");
+///         io::sink().write_buf(&mut buf).await?;
+///         Ok(())
+///     }
+///
+///     #[instantiate_tests(<Bytes>)]
+///     mod test_bytes {}
+/// }
+/// # fn main() {}
+/// ```
+///
+/// The `copy_attrs()` list specifies attributes that are copied to the
+/// instantiated test case functions and preserved on the generic functions.
+/// By default, this set consists of `cfg`, enabling consistent conditional
+/// compilation.
+///
+/// ```
+/// # struct Foo;
+/// #
+/// #[generic_tests::define(copy_attrs(cfg, cfg_attr))]
+/// mod tests {
+///     use super::Foo;
+///
+///     #[test]
+///     #[cfg(windows)]
+///     fn test_only_on_windows<T>() {
+///         // ...
+///     }
+///
+///     #[test]
+///     #[cfg_attr(feature = "my-fn-enhancer", bells_and_whistles)]
+///     fn test_with_optional_bells_and_whistles<T>() {
+///         // ...
+///     }
+///
+///     #[instantiate_tests(<Foo>)]
+///     mod foo {}
+/// }
+/// # fn main() {}
+/// ```
+///
+/// The attribute sets can be customized for an individual generic test
+/// function with the `generic_test` attribute.
+///
+/// ```
+/// # struct Foo;
+/// #
+/// #[generic_tests::define]
+/// mod tests {
+///     use super::Foo;
+///
+///     #[generic_test(attrs(test, cfg_attr), copy_attrs(allow))]
+///     #[test]
+///     #[cfg_attr(windows, ignore)]
+///     #[allow(dead_code)]
+///     fn works_everywhere_except_windows<T>() {
+///         // ...
+///     }
+///
+///     #[instantiate_tests(<Foo>)]
+///     mod foo {}
+/// }
+/// # fn main() {}
+/// ```
+///
+/// Finally, any attributes on the generic functions' parameters are always
+/// copied verbatim to the instantiated functions.
+///
 #[proc_macro_attribute]
 pub fn define(attr: TokenStream, item: TokenStream) -> TokenStream {
     let args = parse_macro_input!(attr as AttributeArgs);
