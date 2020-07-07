@@ -101,8 +101,8 @@ jobs:
           command: test
           args: ${{ matrix.config.features }} --locked
 
-  bench:
-    name: Benchmark
+  test-release-and-bench:
+    name: Test and Benchmark (nightly, --release)
     needs: update-deps
     runs-on: ubuntu-latest
     steps:
@@ -132,7 +132,19 @@ jobs:
           path: ~/.cargo/registry/cache
           key: cargo-deps-${{ hashFiles('Cargo.lock') }}
 
-      - name: Compile and run benchmarks
+      - name: Build
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: --release --all-targets --locked
+
+      - name: Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --release --locked
+
+      - name: Run benchmarks
         uses: actions-rs/cargo@v1
         with:
           command: bench
