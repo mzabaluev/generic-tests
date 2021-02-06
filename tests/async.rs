@@ -5,8 +5,7 @@
 #[generic_tests::define(attrs(tokio::test))]
 mod async_tests {
     use bytes::{Buf, Bytes};
-    use tokio::io::Error;
-    use tokio::prelude::*;
+    use tokio::io::{self, AsyncWrite, AsyncWriteExt, Error};
 
     use std::pin::Pin;
     use std::task::{Context, Poll};
@@ -16,8 +15,8 @@ mod async_tests {
         Ok(())
     }
 
-    #[tokio::test(core_threads = 1)]
-    async fn with_core_threads<T>() -> io::Result<()> {
+    #[tokio::test(flavor = "multi_thread", worker_threads = 1)]
+    async fn with_worker_threads<T>() -> io::Result<()> {
         Ok(())
     }
 
