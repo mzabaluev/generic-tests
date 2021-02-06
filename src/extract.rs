@@ -39,10 +39,7 @@ impl Tests {
         Ok((tests, items))
     }
 
-    fn extract_recording_errors<'ast>(
-        opts: &MacroOpts,
-        items: &'ast mut Vec<Item>,
-    ) -> (Self, ErrorRecord) {
+    fn extract_recording_errors(opts: &MacroOpts, items: &mut Vec<Item>) -> (Self, ErrorRecord) {
         let mut errors = ErrorRecord::default();
         let mut tests = Tests::default();
         let mut mod_wide_generic_arity = None;
@@ -84,7 +81,7 @@ impl Tests {
 }
 
 impl TestFn {
-    fn try_extract<'ast>(opts: &MacroOpts, item: &'ast mut ItemFn) -> syn::Result<Option<Self>> {
+    fn try_extract(opts: &MacroOpts, item: &mut ItemFn) -> syn::Result<Option<Self>> {
         let test_attrs = extract_test_attrs(opts, item)?;
         if test_attrs.is_empty() {
             return Ok(None);
