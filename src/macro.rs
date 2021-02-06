@@ -91,7 +91,7 @@ use syn::{AttributeArgs, ItemMod};
 /// #[generic_tests::define(attrs(tokio::test))]
 /// mod async_tests {
 ///     use bytes::{Buf, Bytes};
-///     use tokio::prelude::*;
+///     use tokio::io::{self, AsyncWriteExt};
 ///
 ///     #[tokio::test]
 ///     async fn test_write_buf<T: Buf>() -> io::Result<()>
