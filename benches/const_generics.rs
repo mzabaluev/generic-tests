@@ -1,5 +1,3 @@
-#![allow(incomplete_features)]
-#![feature(const_generics)]
 #![feature(test)]
 #![deny(unused)]
 #![warn(clippy::all)]
