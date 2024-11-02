@@ -12,7 +12,6 @@
 
 #![warn(clippy::all)]
 #![warn(future_incompatible)]
-#![warn(rust_2018_idioms)]
 #![warn(missing_docs)]
 
 mod error;
