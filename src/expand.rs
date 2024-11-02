@@ -22,7 +22,7 @@ fn transform(args: AttributeArgs, ast: &mut ItemMod) -> syn::Result<()> {
     instantiate(tests, items)
 }
 
-fn instantiate(tests: Tests, items: &mut Vec<Item>) -> syn::Result<()> {
+fn instantiate(tests: Tests, items: &mut [Item]) -> syn::Result<()> {
     let mut instantiator = Instantiator {
         tests,
         depth: 1,

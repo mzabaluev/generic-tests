@@ -39,7 +39,7 @@ impl Tests {
         Ok((tests, items))
     }
 
-    fn extract_recording_errors(opts: &MacroOpts, items: &mut Vec<Item>) -> (Self, ErrorRecord) {
+    fn extract_recording_errors(opts: &MacroOpts, items: &mut [Item]) -> (Self, ErrorRecord) {
         let mut errors = ErrorRecord::default();
         let mut tests = Tests::default();
         let mut mod_wide_generic_arity = None;
@@ -115,7 +115,7 @@ fn extract_test_attrs(opts: &MacroOpts, item: &mut ItemFn) -> syn::Result<Vec<At
     let mut pos = 0;
     while pos < item.attrs.len() {
         let attr = &item.attrs[pos];
-        if options::is_test_attr(&attr, &opts, &fn_opts) {
+        if options::is_test_attr(attr, opts, &fn_opts) {
             test_attrs.push(item.attrs.remove(pos));
             continue;
         }
@@ -123,7 +123,7 @@ fn extract_test_attrs(opts: &MacroOpts, item: &mut ItemFn) -> syn::Result<Vec<At
     }
     if !test_attrs.is_empty() {
         for attr in &item.attrs {
-            if options::is_copied_attr(&attr, &opts, &fn_opts) {
+            if options::is_copied_attr(attr, opts, &fn_opts) {
                 test_attrs.push(attr.clone());
             }
         }

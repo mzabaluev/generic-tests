@@ -83,7 +83,7 @@ impl TestFnSignature {
         let output = match &item.sig.output {
             ReturnType::Default => TestReturnSignature::default(),
             ReturnType::Type(_, ty) => {
-                let sig = TestReturnSignature::try_build(&ty, &input.item.lifetimes)?;
+                let sig = TestReturnSignature::try_build(ty, &input.item.lifetimes)?;
                 lifetimes = lifetimes.union(&sig.item.lifetimes).cloned().collect();
                 sig
             }
@@ -248,7 +248,7 @@ impl LifetimeCollector {
             }
         };
         placeholder.ident = lifetime.ident.clone();
-        self.collect_lifetime(&placeholder);
+        self.collect_lifetime(placeholder);
     }
 
     fn validate(self) -> syn::Result<HashSet<Lifetime>> {
@@ -341,7 +341,7 @@ impl<'a> LifetimeInferenceSuppression<'a> {
     }
 
     fn visitor_mut(&mut self) -> &mut LifetimeCollector {
-        &mut self.visitor
+        self.visitor
     }
 }
 
@@ -373,7 +373,7 @@ impl<'a> LifetimeBindingScope<'a> {
     }
 
     fn visitor_mut(&mut self) -> &mut LifetimeCollector {
-        &mut self.visitor
+        self.visitor
     }
 }
 
@@ -447,7 +447,7 @@ impl<'ast> Visit<'ast> for GenericParamCatcher {
 fn validate(sig: &Signature) -> syn::Result<()> {
     if sig.constness.is_some() {
         return Err(Error::new_spanned(
-            &sig.constness,
+            sig.constness,
             "generic test function cannot be const",
         ));
     }
@@ -469,7 +469,7 @@ fn validate(sig: &Signature) -> syn::Result<()> {
     }
     match &sig.output {
         ReturnType::Default => {}
-        ReturnType::Type(_, ty) => catcher.visit_type(&ty),
+        ReturnType::Type(_, ty) => catcher.visit_type(ty),
     }
     catcher.errors.check()
 }
