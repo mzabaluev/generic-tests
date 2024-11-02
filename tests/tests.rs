@@ -264,7 +264,7 @@ mod custom_copy_attrs {
     #[allow(dead_code)]
     fn not_a_test_case_but_has_doc<T>() {}
 
-    #[cfg_attr(test, doc("This should not be instantiated"))]
+    #[cfg_attr(test, doc = "This should not be instantiated")]
     #[allow(dead_code)]
     fn not_a_test_case_but_has_cfg_attr<T>() {}
 
