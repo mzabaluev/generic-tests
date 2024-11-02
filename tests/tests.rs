@@ -1,4 +1,5 @@
 #![deny(unused)]
+#![allow(unexpected_cfgs)]
 #![warn(clippy::all)]
 
 #[generic_tests::define]
