@@ -79,13 +79,17 @@ impl TestFnSignature {
     pub fn try_build(item: &ItemFn) -> syn::Result<Self> {
         validate(&item.sig)?;
         let input = TestInputSignature::try_build(&item.sig.inputs)?;
-        let mut lifetimes = input.item.lifetimes.clone();
-        let output = match &item.sig.output {
-            ReturnType::Default => TestReturnSignature::default(),
+        let (output, lifetimes) = match &item.sig.output {
+            ReturnType::Default => (TestReturnSignature::default(), input.item.lifetimes.clone()),
             ReturnType::Type(_, ty) => {
                 let sig = TestReturnSignature::try_build(ty, &input.item.lifetimes)?;
-                lifetimes = lifetimes.union(&sig.item.lifetimes).cloned().collect();
-                sig
+                let lifetimes = input
+                    .item
+                    .lifetimes
+                    .union(&sig.item.lifetimes)
+                    .cloned()
+                    .collect();
+                (sig, lifetimes)
             }
         };
         let lifetime_params = filter_fn_lifetimes(&item.sig.generics, &lifetimes)?;
@@ -166,16 +170,13 @@ impl TestReturnSignature {
         use LifetimeSubstMode as Mode;
 
         let subst_mode = {
+            // Can only substitute the placeholder if there is exactly one lifetime
             let mut iter = input_lifetimes.iter();
-            iter.next().map(|lifetime| {
-                if iter.len() == 0 {
-                    Mode::Output(lifetime.clone())
-                } else {
-                    Mode::Fail
-                }
-            })
-        }
-        .unwrap_or(Mode::Fail);
+            match iter.next() {
+                Some(lifetime) if iter.len() == 0 => Mode::Output(lifetime.clone()),
+                _ => Mode::Fail,
+            }
+        };
         let mut lifetime_collector = LifetimeCollector::new(subst_mode);
         let mut ty = Box::new(ty.clone());
         lifetime_collector.visit_type_mut(&mut ty);
