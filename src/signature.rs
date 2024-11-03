@@ -201,7 +201,8 @@ enum LifetimeSubstMode {
 struct LifetimeCollector {
     lifetimes: HashSet<Lifetime>,
     subst_mode: LifetimeSubstMode,
-    bound_lifetimes: HashSet<Lifetime>,
+    // The stack of bound lifetimes, outermost first
+    bound_lifetime_scopes: Vec<HashSet<Lifetime>>,
     errors: ErrorRecord,
 }
 
@@ -210,13 +211,19 @@ impl LifetimeCollector {
         LifetimeCollector {
             lifetimes: HashSet::new(),
             subst_mode,
-            bound_lifetimes: HashSet::new(),
+            bound_lifetime_scopes: Vec::new(),
             errors: Default::default(),
         }
     }
 
     fn collect_lifetime(&mut self, lifetime: &Lifetime) {
-        if !self.lifetimes.contains(lifetime) && !self.bound_lifetimes.contains(lifetime) {
+        if !self.lifetimes.contains(lifetime)
+            && !self
+                .bound_lifetime_scopes
+                .iter()
+                .rev()
+                .any(|bound_lifetimes| bound_lifetimes.contains(lifetime))
+        {
             self.lifetimes.insert(lifetime.clone());
         }
     }
@@ -250,6 +257,24 @@ impl LifetimeCollector {
         };
         placeholder.ident = lifetime.ident.clone();
         self.collect_lifetime(placeholder);
+    }
+
+    fn push_bound_lifetimes(&mut self, binding: &BoundLifetimes) {
+        let bound_lifetimes = binding
+            .lifetimes
+            .iter()
+            .map(|param| match param {
+                GenericParam::Lifetime(def) => def.lifetime.clone(),
+                _ => panic!("unexpected generic parameter in bound lifetimes"),
+            })
+            .collect();
+        self.bound_lifetime_scopes.push(bound_lifetimes);
+    }
+
+    fn pop_bound_lifetimes(&mut self) {
+        self.bound_lifetime_scopes
+            .pop()
+            .expect("mismatched pop_bound_lifetimes call");
     }
 
     fn validate(self) -> syn::Result<HashSet<Lifetime>> {
@@ -355,26 +380,21 @@ impl<'a> Drop for LifetimeInferenceSuppression<'a> {
 #[must_use = "should be assigned to a local variable"]
 struct LifetimeBindingScope<'a> {
     visitor: &'a mut LifetimeCollector,
-    outer_bindings: Option<HashSet<Lifetime>>,
+    has_bindings: bool,
 }
 
 impl<'a> LifetimeBindingScope<'a> {
     fn new(visitor: &'a mut LifetimeCollector, binding: Option<&BoundLifetimes>) -> Self {
-        let outer_bindings = binding.map(|binding| {
-            let mut bound_lifetimes = visitor.bound_lifetimes.clone();
-            for param in &binding.lifetimes {
-                match param {
-                    GenericParam::Lifetime(def) => {
-                        bound_lifetimes.insert(def.lifetime.clone());
-                    }
-                    _ => panic!("unexpected generic parameter in bound lifetimes"),
-                }
+        let has_bindings = match binding {
+            Some(binding) => {
+                visitor.push_bound_lifetimes(binding);
+                true
             }
-            mem::replace(&mut visitor.bound_lifetimes, bound_lifetimes)
-        });
+            None => false,
+        };
         LifetimeBindingScope {
             visitor,
-            outer_bindings,
+            has_bindings,
         }
     }
 
@@ -385,8 +405,8 @@ impl<'a> LifetimeBindingScope<'a> {
 
 impl<'a> Drop for LifetimeBindingScope<'a> {
     fn drop(&mut self) {
-        if let Some(bound_lifetimes) = self.outer_bindings.take() {
-            self.visitor.bound_lifetimes = bound_lifetimes;
+        if self.has_bindings {
+            self.visitor.pop_bound_lifetimes();
         }
     }
 }
