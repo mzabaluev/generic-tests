@@ -1,5 +1,8 @@
 use proc_macro2::Span;
-use syn::{Attribute, AttributeArgs, Error, Ident, Meta, MetaList, NestedMeta, Path};
+use syn::meta::ParseNestedMeta;
+use syn::parse::{Parse, ParseBuffer};
+use syn::{parenthesized, Token};
+use syn::{Attribute, Error, Ident, Meta, Path};
 
 use std::collections::HashSet;
 
@@ -19,63 +22,54 @@ pub struct TestFnOpts {
 
 pub fn is_test_attr(attr: &Attribute, macro_opts: &MacroOpts, fn_opts: &TestFnOpts) -> bool {
     if let Some(attrs) = &fn_opts.inst_attrs {
-        attrs.contains(&attr.path)
+        attrs.contains(attr.meta.path())
     } else {
-        macro_opts.inst_attrs.contains(&attr.path)
+        macro_opts.inst_attrs.contains(attr.meta.path())
     }
 }
 
 pub fn is_copied_attr(attr: &Attribute, macro_opts: &MacroOpts, fn_opts: &TestFnOpts) -> bool {
     if let Some(attrs) = &fn_opts.copy_attrs {
-        attrs.contains(&attr.path)
+        attrs.contains(attr.meta.path())
     } else {
-        macro_opts.copy_attrs.contains(&attr.path)
+        macro_opts.copy_attrs.contains(attr.meta.path())
     }
 }
 
-fn attr_names_to_set(names: &[&str]) -> HashSet<Path> {
+fn set_from_attr_names(names: &[&str]) -> HashSet<Path> {
     names
         .iter()
         .map(|&name| Ident::new(name, Span::call_site()).into())
         .collect()
 }
 
+fn populate_from_attr_list(input: &ParseBuffer<'_>, set: &mut HashSet<Path>) -> syn::Result<()> {
+    let content;
+    parenthesized!(content in input);
+    let paths = content.parse_terminated(Path::parse, Token![,])?;
+    set.extend(paths);
+    Ok(())
+}
+
 impl Default for MacroOpts {
     fn default() -> Self {
         MacroOpts {
-            inst_attrs: attr_names_to_set(DEFAULT_TEST_ATTRS),
-            copy_attrs: attr_names_to_set(DEFAULT_COPIED_ATTRS),
+            inst_attrs: set_from_attr_names(DEFAULT_TEST_ATTRS),
+            copy_attrs: set_from_attr_names(DEFAULT_COPIED_ATTRS),
         }
     }
 }
 
 impl MacroOpts {
-    pub fn from_args(args: AttributeArgs) -> syn::Result<Self> {
-        const ERROR_MSG: &str = "unexpected attribute input; \
-                                use `attrs()`, `copy_attrs()`";
-        if args.is_empty() {
-            return Ok(MacroOpts::default());
+    pub fn parse(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
+        if meta.path.is_ident("attrs") {
+            populate_from_attr_list(meta.input, &mut self.inst_attrs)?;
+        } else if meta.path.is_ident("copy_attrs") {
+            populate_from_attr_list(meta.input, &mut self.copy_attrs)?;
+        } else {
+            return Err(meta.error("unsupported attribute"));
         }
-        let mut inst_attrs = None;
-        let mut copy_attrs = None;
-        for nested_meta in args {
-            match nested_meta {
-                NestedMeta::Meta(Meta::List(list)) => {
-                    if list.path.is_ident("attrs") {
-                        populate_from_attrs_list(list, &mut inst_attrs)?;
-                    } else if list.path.is_ident("copy_attrs") {
-                        populate_from_attrs_list(list, &mut copy_attrs)?;
-                    } else {
-                        return Err(Error::new_spanned(list, ERROR_MSG));
-                    }
-                }
-                _ => return Err(Error::new_spanned(nested_meta, ERROR_MSG)),
-            }
-        }
-        Ok(MacroOpts {
-            inst_attrs: inst_attrs.unwrap_or_else(|| attr_names_to_set(DEFAULT_TEST_ATTRS)),
-            copy_attrs: copy_attrs.unwrap_or_else(|| attr_names_to_set(DEFAULT_COPIED_ATTRS)),
-        })
+        Ok(())
     }
 }
 
@@ -84,55 +78,33 @@ impl TestFnOpts {
         const ERROR_MSG: &str = "unexpected attribute input; \
                 use `attrs()`, `copy_attrs()`";
 
-        let args = match attr_meta {
+        match attr_meta {
+            Meta::List(list) => {
+                list.parse_nested_meta(|meta| {
+                    if meta.path.is_ident("attrs") {
+                        populate_from_attr_list(
+                            meta.input,
+                            self.inst_attrs.get_or_insert(HashSet::new()),
+                        )?;
+                    } else if meta.path.is_ident("copy_attrs") {
+                        populate_from_attr_list(
+                            meta.input,
+                            self.copy_attrs.get_or_insert(HashSet::new()),
+                        )?;
+                    } else {
+                        return Err(meta.error(ERROR_MSG));
+                    }
+                    Ok(())
+                })?;
+            }
             Meta::Path(path) => {
                 return Err(Error::new_spanned(
                     path,
                     "attribute must have arguments; use `attrs()`, `copy_attrs()`",
                 ))
             }
-            Meta::List(list) => list.nested,
             Meta::NameValue(nv) => return Err(Error::new_spanned(nv, ERROR_MSG)),
         };
-
-        for nested_meta in args {
-            match nested_meta {
-                NestedMeta::Meta(Meta::List(list)) => {
-                    if list.path.is_ident("attrs") {
-                        populate_from_attrs_list(list, &mut self.inst_attrs)?;
-                    } else if list.path.is_ident("copy_attrs") {
-                        populate_from_attrs_list(list, &mut self.copy_attrs)?;
-                    } else {
-                        return Err(Error::new_spanned(list, ERROR_MSG));
-                    }
-                }
-                _ => return Err(Error::new_spanned(nested_meta, ERROR_MSG)),
-            }
-        }
         Ok(())
     }
-}
-
-fn populate_from_attrs_list(
-    list: MetaList,
-    customized_set: &mut Option<HashSet<Path>>,
-) -> syn::Result<()> {
-    if customized_set.is_none() {
-        *customized_set = Some(HashSet::new());
-    }
-    let set = customized_set.as_mut().unwrap();
-    for nested_meta in list.nested {
-        match nested_meta {
-            NestedMeta::Meta(Meta::Path(path)) => {
-                set.insert(path);
-            }
-            _ => {
-                return Err(Error::new_spanned(
-                    nested_meta,
-                    "the attribute list can only contain paths",
-                ))
-            }
-        }
-    }
-    Ok(())
 }

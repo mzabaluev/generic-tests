@@ -20,9 +20,10 @@ mod extract;
 mod options;
 mod signature;
 
+use options::MacroOpts;
 use proc_macro::TokenStream;
 use syn::parse_macro_input;
-use syn::{AttributeArgs, ItemMod};
+use syn::{meta, ItemMod};
 
 /// Populates a module tree with test cases parameterizing generic definitions.
 ///
@@ -166,8 +167,10 @@ use syn::{AttributeArgs, ItemMod};
 /// copied verbatim to the instantiated functions.
 ///
 #[proc_macro_attribute]
-pub fn define(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let args = parse_macro_input!(attr as AttributeArgs);
+pub fn define(args: TokenStream, item: TokenStream) -> TokenStream {
+    let mut opts = MacroOpts::default();
+    let opts_parser = meta::parser(|meta| opts.parse(meta));
+    parse_macro_input!(args with opts_parser);
     let ast = parse_macro_input!(item as ItemMod);
-    expand::expand(args, ast).into()
+    expand::expand(&opts, ast).into()
 }
