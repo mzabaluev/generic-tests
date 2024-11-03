@@ -7,18 +7,17 @@ use quote::ToTokens;
 use syn::punctuated::Punctuated;
 use syn::visit_mut::{self, VisitMut};
 use syn::{parse_quote, Token};
-use syn::{AttributeArgs, Error, Expr, Item, ItemMod, Path};
+use syn::{Error, Expr, Item, ItemMod, Path};
 
-pub fn expand(args: AttributeArgs, mut ast: ItemMod) -> TokenStream {
-    match transform(args, &mut ast) {
+pub fn expand(opts: &MacroOpts, mut ast: ItemMod) -> TokenStream {
+    match transform(opts, &mut ast) {
         Ok(()) => ast.into_token_stream(),
         Err(e) => e.to_compile_error(),
     }
 }
 
-fn transform(args: AttributeArgs, ast: &mut ItemMod) -> syn::Result<()> {
-    let opts = MacroOpts::from_args(args)?;
-    let (tests, items) = Tests::try_extract(&opts, ast)?;
+fn transform(opts: &MacroOpts, ast: &mut ItemMod) -> syn::Result<()> {
+    let (tests, items) = Tests::try_extract(opts, ast)?;
     instantiate(tests, items)
 }
 

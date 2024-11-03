@@ -103,10 +103,9 @@ fn extract_test_attrs(opts: &MacroOpts, item: &mut ItemFn) -> syn::Result<Vec<At
     let mut pos = 0;
     while pos < item.attrs.len() {
         let attr = &item.attrs[pos];
-        if attr.path.is_ident("generic_test") {
+        if attr.meta.path().is_ident("generic_test") {
             let attr = item.attrs.remove(pos);
-            let meta = attr.parse_meta()?;
-            fn_opts.apply_attr(meta)?;
+            fn_opts.apply_attr(attr.meta)?;
             continue;
         }
         pos += 1;
@@ -147,7 +146,7 @@ pub struct InstArguments(Punctuated<GenericArgument, Token![,]>);
 impl InstArguments {
     pub fn try_extract(item: &mut ItemMod) -> syn::Result<Option<Self>> {
         for (pos, attr) in item.attrs.iter().enumerate() {
-            if attr.path.is_ident("instantiate_tests") {
+            if attr.meta.path().is_ident("instantiate_tests") {
                 match attr.style {
                     AttrStyle::Outer => {}
                     AttrStyle::Inner(_) => {

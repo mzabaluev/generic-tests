@@ -361,8 +361,13 @@ impl<'a> LifetimeBindingScope<'a> {
     fn new(visitor: &'a mut LifetimeCollector, binding: Option<&BoundLifetimes>) -> Self {
         let outer_bindings = binding.map(|binding| {
             let mut bound_lifetimes = visitor.bound_lifetimes.clone();
-            for def in &binding.lifetimes {
-                bound_lifetimes.insert(def.lifetime.clone());
+            for param in &binding.lifetimes {
+                match param {
+                    GenericParam::Lifetime(def) => {
+                        bound_lifetimes.insert(def.lifetime.clone());
+                    }
+                    _ => panic!("unexpected generic parameter in bound lifetimes"),
+                }
             }
             mem::replace(&mut visitor.bound_lifetimes, bound_lifetimes)
         });
@@ -491,7 +496,7 @@ fn filter_fn_lifetimes(
                         validate_lifetime_def(&predicate.lifetime, &predicate.bounds)?;
                     }
                 }
-                WherePredicate::Type(_) | WherePredicate::Eq(_) => {}
+                _ => {}
             }
         }
     }
