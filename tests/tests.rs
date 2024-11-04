@@ -404,3 +404,14 @@ mod mut_in_signature {
     #[instantiate_tests(<()>)]
     mod inst {}
 }
+
+// Use a stand-in attribute because standard test does not allow unsafe
+#[generic_tests::define(attrs(inline))]
+mod unsafe_fn {
+    #[inline]
+    #[allow(dead_code)]
+    unsafe fn unsafe_fn<T>() {}
+
+    #[instantiate_tests(<()>)]
+    mod inst {}
+}
