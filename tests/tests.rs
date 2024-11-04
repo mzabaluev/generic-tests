@@ -251,6 +251,18 @@ mod custom_test_attrs {
     mod inst {}
 }
 
+#[generic_tests::define(attrs(allow))]
+mod custom_attrs_override_test {
+    #[allow(dead_code)]
+    fn foo<T>() {}
+
+    #[instantiate_tests(<()>)]
+    mod inst {}
+
+    #[test]
+    fn test_is_not_instantiated() {}
+}
+
 #[generic_tests::define(copy_attrs(doc, cfg_attr))]
 mod custom_copy_attrs {
 

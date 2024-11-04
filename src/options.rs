@@ -15,6 +15,12 @@ pub struct MacroOpts {
 }
 
 #[derive(Default)]
+pub struct ParsedMacroOpts {
+    inst_attrs: Option<HashSet<Path>>,
+    copy_attrs: Option<HashSet<Path>>,
+}
+
+#[derive(Default)]
 pub struct TestFnOpts {
     inst_attrs: Option<HashSet<Path>>,
     copy_attrs: Option<HashSet<Path>>,
@@ -60,16 +66,27 @@ impl Default for MacroOpts {
     }
 }
 
-impl MacroOpts {
+impl ParsedMacroOpts {
     pub fn parse(&mut self, meta: ParseNestedMeta) -> syn::Result<()> {
         if meta.path.is_ident("attrs") {
-            populate_from_attr_list(meta.input, &mut self.inst_attrs)?;
+            populate_from_attr_list(meta.input, self.inst_attrs.get_or_insert(HashSet::new()))?;
         } else if meta.path.is_ident("copy_attrs") {
-            populate_from_attr_list(meta.input, &mut self.copy_attrs)?;
+            populate_from_attr_list(meta.input, self.copy_attrs.get_or_insert(HashSet::new()))?;
         } else {
             return Err(meta.error("unsupported attribute"));
         }
         Ok(())
+    }
+
+    pub fn into_effective(self) -> MacroOpts {
+        MacroOpts {
+            inst_attrs: self
+                .inst_attrs
+                .unwrap_or_else(|| set_from_attr_names(DEFAULT_TEST_ATTRS)),
+            copy_attrs: self
+                .copy_attrs
+                .unwrap_or_else(|| set_from_attr_names(DEFAULT_COPIED_ATTRS)),
+        }
     }
 }
 

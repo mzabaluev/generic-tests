@@ -20,7 +20,7 @@ mod extract;
 mod options;
 mod signature;
 
-use options::MacroOpts;
+use options::ParsedMacroOpts;
 use proc_macro::TokenStream;
 use syn::parse_macro_input;
 use syn::{meta, ItemMod};
@@ -168,9 +168,9 @@ use syn::{meta, ItemMod};
 ///
 #[proc_macro_attribute]
 pub fn define(args: TokenStream, item: TokenStream) -> TokenStream {
-    let mut opts = MacroOpts::default();
+    let mut opts = ParsedMacroOpts::default();
     let opts_parser = meta::parser(|meta| opts.parse(meta));
     parse_macro_input!(args with opts_parser);
     let ast = parse_macro_input!(item as ItemMod);
-    expand::expand(&opts, ast).into()
+    expand::expand(&opts.into_effective(), ast).into()
 }
