@@ -1,5 +1,4 @@
 #![deny(unused)]
-#![allow(unexpected_cfgs)]
 #![warn(clippy::all)]
 
 #[generic_tests::define]
@@ -192,14 +191,14 @@ mod cfg_attr {
     #[test]
     fn enabled<T>() {}
 
-    #[cfg(feature = "no-such-feature")]
+    #[cfg(not(test))]
     #[test]
     fn disabled_above<T>() {
         panic!("unexpectedly enabled")
     }
 
     #[test]
-    #[cfg(feature = "no-such-feature")]
+    #[cfg(not(test))]
     fn disabled_below<T>() {
         panic!("unexpectedly enabled")
     }
@@ -303,7 +302,7 @@ mod fn_level_attr {
 
         #[generic_test(copy_attrs())]
         #[test]
-        #[cfg(feature = "no-such-feature")]
+        #[cfg(not(test))]
         fn copy_attrs_overrides_default<T>() {}
 
         #[cfg(test)]
@@ -330,7 +329,7 @@ mod fn_level_attr {
 
         #[generic_test(copy_attrs(cfg))]
         #[allow()]
-        #[cfg(feature = "no-such-feature")]
+        #[cfg(not(test))]
         fn custom_copy_attrs<T>() {
             panic!("should be disabled");
         }
