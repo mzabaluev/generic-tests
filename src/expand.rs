@@ -53,6 +53,7 @@ fn shim_mod(test: &TestFn, inst_args: &InstArguments, root_path: &Path) -> Item 
     // site has them inferred.
     let lifetimes = input_sig.item.lifetimes.union(&return_sig.item.lifetimes);
     let asyncness = test.asyncness;
+    let unsafety = test.unsafety;
     let call = wrap_async(
         asyncness,
         parse_quote! {
@@ -66,7 +67,7 @@ fn shim_mod(test: &TestFn, inst_args: &InstArguments, root_path: &Path) -> Item 
             #[allow(unused_imports)]
             use super::super::*;
 
-            pub(super) #asyncness unsafe fn shim<#(#lifetimes),*>(
+            pub(super) #asyncness #unsafety fn shim<#(#lifetimes),*>(
                 _args: _generic_tests_call_sig::#args_path,
             ) -> _generic_tests_call_sig::#ret_path {
                 #call
@@ -144,7 +145,7 @@ impl Instantiator {
                     #mod_shim
 
                     let args = shim::_generic_tests_call_sig::Args { #(#args_field_init),* };
-                    unsafe { #call }
+                    #call
                 }
             });
         }
