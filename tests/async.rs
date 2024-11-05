@@ -1,4 +1,3 @@
-#![cfg(feature = "test-tokio")]
 #![deny(unused)]
 #![warn(clippy::all)]
 
