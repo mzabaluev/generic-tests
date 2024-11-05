@@ -87,7 +87,6 @@ use syn::{meta, ItemMod};
 /// `attrs()` parameter overrides the default set.
 ///
 /// ```
-/// # #[cfg(feature = "test-tokio")]
 /// #[generic_tests::define(attrs(tokio::test))]
 /// mod async_tests {
 ///     use bytes::{Buf, Bytes};
