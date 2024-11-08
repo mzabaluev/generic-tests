@@ -2,11 +2,12 @@
 //!
 //! The `define` macro provided by this crate allows the test writer to
 //! reuse code between test cases or benchmarks that use the same test protocol
-//! with different types under test. As in general programming with Rust, this
-//! is achieved by using generic parameters and trait bounds. Generic
-//! test functions in a module processed by the `define` macro are annotated
-//! with attributes consumed by the test framework, such as `test` or `bench`,
-//! however the actual test cases can be instantiated in multiple submodules
+//! with different types or constant values supplied to specific tests.
+//! As in general programming with Rust, this is achieved by using generic
+//! parameters and trait bounds. A module processed by the `define` macro
+//! contains generic test functions that are annotated with attributes consumed
+//! by the test framework, such as `test` or `bench`.
+//! The actual test cases can be instantiated in multiple submodules
 //! annotated with the `instantiate_tests` attribute providing specific
 //! argument types for the tests.
 
@@ -28,19 +29,17 @@ use syn::{meta, ItemMod};
 /// Populates a module tree with test cases parameterizing generic definitions.
 ///
 /// This macro is used to annotate a module containing test case definitions.
-/// All functions defined immediately in the module and marked with
-/// a [test attribute][test-attributes] must have the same number of generic
-/// type parameters. Each function's signature must be as required
-/// by the test attribute that the function is marked with; thus, the functions
-/// marked with `test` must have no parameters and their return type must be
-/// either `()` or `Result<(), E> where E: std::error::Error`.
+/// All functions defined directly in the module and marked with
+/// a [test attribute][test-attributes] must have the same number and order
+/// of generic type parameters.
 ///
 /// Empty submodules defined inline at any depth under the module on which
 /// the macro is invoked can be annotated with the `instantiate_tests`
-/// attribute. The macro populates these submodules with functions whose names,
-/// signatures, and test attributes mirror the generic test functions at the
-/// macro invocation root module, each calling its generic namesake
-/// parameterized with the arguments given in `instantiate_tests`.
+/// attribute. The macro populates these submodules with functions having names,
+/// signatures, and test attributes mirroring the generic test functions at the
+/// macro invocation's root module. Each of the instantiated functions calls
+/// its generic namesake in the root module, parameterized with the arguments
+/// given in `instantiate_tests`.
 ///
 /// # Basic example
 ///
@@ -75,9 +74,9 @@ use syn::{meta, ItemMod};
 ///
 /// [test-attributes]: #test-attributes
 ///
-/// The macro checks the paths of function attributes against a customizable
-/// set of attributes that annotate the functions for the test framework.
-/// Only functions with at least one of the attributes found in this set
+/// The macro checks attributes of the function items directly contained
+/// by the module against a customizable set of attribute paths that annotate
+/// test cases. Functions with at least one of the attributes found in this set
 /// are selected for instantiation.
 /// These attributes are replicated to the instantiated test case functions and
 /// erased from the original generic definitions. By default, the
@@ -111,10 +110,10 @@ use syn::{meta, ItemMod};
 /// # fn main() {}
 /// ```
 ///
-/// The `copy_attrs()` list specifies attributes that are copied to the
-/// instantiated test case functions and preserved on the generic functions.
-/// By default, this set consists of `cfg`, enabling consistent conditional
-/// compilation.
+/// The `copy_attrs()` list parameter can be used to specify item attributes
+/// that are both copied to the instantiated test case functions and preserved
+/// on the generic functions. By default, this set consists of `cfg`,
+/// enabling consistent conditional compilation.
 ///
 /// ```
 /// # struct Foo;
@@ -165,8 +164,8 @@ use syn::{meta, ItemMod};
 /// # fn main() {}
 /// ```
 ///
-/// Finally, any attributes on the generic functions' parameters are always
-/// copied verbatim to the instantiated functions.
+/// Finally, all function parameter attributes on the generic test functions
+/// are always copied into the signatures of the instantiated functions.
 ///
 #[proc_macro_attribute]
 pub fn define(args: TokenStream, item: TokenStream) -> TokenStream {
