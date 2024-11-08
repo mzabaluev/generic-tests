@@ -1,6 +1,6 @@
 [package]
 name = "generic-tests"
-version = "0.1.3-dev"
+version = "0.1.3"
 authors = ["Mikhail Zabaluev <mikhail.zabaluev@gmail.com>"]
 edition = "2021"
 description = "Procedural macro to define tests and benchmarks generically"
