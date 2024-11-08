@@ -167,6 +167,29 @@ use syn::{meta, ItemMod};
 /// Finally, all function parameter attributes on the generic test functions
 /// are always copied into the signatures of the instantiated functions.
 ///
+/// # Const generics
+///
+/// Since Rust 1.51, const generic parameters can be used to parameterize test
+/// cases in addition to type parameters.
+///
+/// ```
+/// #[generic_tests::define]
+/// mod tests {
+///     use std::iter;
+///
+///     #[test]
+///     fn test_fill_vec<const LEN: usize>() {
+///         let _v: Vec<u8> = iter::repeat(0xA5).take(LEN).collect();
+///     }
+///
+///     #[instantiate_tests(<16>)]
+///     mod small {}
+///
+///     #[instantiate_tests(<65536>)]
+///     mod large {}
+/// }
+/// ```
+///
 #[proc_macro_attribute]
 pub fn define(args: TokenStream, item: TokenStream) -> TokenStream {
     let mut opts = ParsedMacroOpts::default();
