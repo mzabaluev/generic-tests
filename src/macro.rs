@@ -102,6 +102,9 @@ use syn::{meta, ItemMod};
 ///         Ok(())
 ///     }
 ///
+///     #[instantiate_tests(<Vec<u8>>)]
+///     mod test_vec {}
+///
 ///     #[instantiate_tests(<Bytes>)]
 ///     mod test_bytes {}
 /// }
